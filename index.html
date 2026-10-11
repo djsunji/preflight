@@ -88,6 +88,9 @@ details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-
 .taf .kd{color:var(--soft);line-height:1.35;padding-top:.15em}
 .taf .el{min-width:0}
 .taf .hdr{grid-column:1/-1;color:var(--soft);margin-bottom:2px}
+.raw b small{font:400 10.5px/1.3 var(--f-body);letter-spacing:0;color:var(--soft);margin-left:6px}
+.raw b small.exp{color:var(--bad);font-weight:600}
+.raw .cv{color:var(--soft);font-size:.9em}
 .raw .imc{color:var(--bad);background:var(--bad-t);padding:0 2px}
 .raw .vmc{color:var(--ok)}
 .raw .cb{color:var(--warn);background:var(--warn-t);padding:0 2px}
@@ -563,6 +566,22 @@ function formatTaf(raw) {
     `<div class="row"><span class="tm">${esc(r.tm)}</span><span class="kd">${esc(r.kd)}</span><span class="el">${highlight(r.el.join(' '))}</span></div>`).join('') + '</div>';
 }
 
+// Andere Einheiten in KT, m und ft umrechnen
+function convert(t) {
+  let m;
+  if ((m = t.match(/^(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(MPS|KMH)$/))) {
+    const f = m[4] === 'MPS' ? 1.94384 : 0.539957, k = v => String(Math.round(v * f)).padStart(2, '0');
+    return m[1] + k(m[2]) + (m[3] ? 'G' + k(m[3]) : '') + 'KT';
+  }
+  if ((m = t.match(/^(P|M)?(\d+)?(?:(\d)\/(\d+))?SM$/))) {
+    const v = Math.round(((+m[2] || 0) + (m[3] ? m[3] / m[4] : 0)) * 1609);
+    return m[1] === 'P' && v >= 9000 ? '≥10 km' : (m[1] === 'P' ? '>' : m[1] === 'M' ? '<' : '') + (v >= 10000 ? '≥10 km' : v + ' m');
+  }
+  if ((m = t.match(/^R(\d{2}[LCR]?)\/([PM])?(\d{4})(?:V([PM])?(\d{4}))?FT/))) return Math.round(m[3] * 0.3048) + (m[5] ? '–' + Math.round(m[5] * 0.3048) : '') + ' m';
+  if ((m = t.match(/^A(\d{4})$/))) return 'Q' + Math.round(m[1] / 100 * 33.8639);
+  return '';
+}
+
 // METAR/TAF farbig: IMC rot, VMC grün, Gewitter/CB gelb
 function highlight(raw) {
   return raw.split(' ').map(t => {
@@ -570,11 +589,13 @@ function highlight(raw) {
     if ((m = t.match(/^(\d{4})(NDV|N|NE|E|SE|S|SW|W|NW)?$/))) cls = +m[1] < 5000 ? 'imc' : 'vmc';
     else if ((m = t.match(/^(P)?(\d+)?(?:(\d)\/(\d+))?SM$/))) cls = m[1] || ((+m[2] || 0) + (m[3] ? m[3] / m[4] : 0)) >= 3 ? 'vmc' : 'imc';
     else if (t === 'CAVOK' || /^(NSC|SKC|CLR|NCD)$/.test(t)) cls = 'vmc';
-    else if (/^R\d{2}[LCR]?\//.test(t) || /^VV/.test(t)) cls = 'imc';
+    else if (/^R\d{2}[LCR]?\/[PM]?\d{4}/.test(t) || /^VV/.test(t)) cls = 'imc';
     else if ((m = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/))) cls = m[3] ? 'cb' : (/BKN|OVC/.test(m[1]) && +m[2] < 15) ? 'imc' : 'vmc';
     else if (/^(\+|-|VC)?TS/.test(t)) cls = 'cb';
     else if (/^(\+|-)?(MI|BC|PR|FZ)?FG$/.test(t)) cls = 'imc';
-    return cls ? `<span class="${cls}">${esc(t)}</span>` : esc(t);
+    const cv = convert(t);
+    const out = cls ? `<span class="${cls}">${esc(t)}</span>` : esc(t);
+    return cv ? out + ` <span class="cv">(${cv})</span>` : out;
   }).join(' ');
 }
 
@@ -616,13 +637,14 @@ function render(data, source) {
     const age = metar?.time ? Math.round((now - metar.time) / 60000) : null;
     const stale = age != null && age > 90;
     const ageCls = age == null ? 'fail' : age <= 30 ? 'ok' : age <= 60 ? 'warn' : 'fail';
+    const tafValid = taf?.valid ? (now >= taf.valid[0] - 3 * 3600000 && now <= taf.valid[1]) : null;
     const tafAge = taf?.issue ? Math.round((now - taf.issue) / 60000) : null;
     out.push(`<article class="card ${ev.worst}">
       <div class="hd"><span class="role">${rl}</span><span class="icao">${esc(id)}</span><span class="pill ${ev.worst}">${LABEL[ev.worst]}</span></div>
       <div class="meta">Zeitfenster ${PF.fmt(win[r][0])}–${PF.fmt(win[r][1])}${r === 'dep' ? ' (ETD ±1 h)' : ' (ETA ±1 h)'}</div>
       <div class="age ${ageCls}">METAR <strong>${age != null ? age : '–'}</strong> min alt${tafAge != null ? `<span class="taf">TAF ${PF.fmt(taf.issue)} · vor ${tafAge >= 120 ? hhmm(tafAge) + ' h' : tafAge + ' min'}</span>` : ''}</div>
-      <div class="raw${stale ? ' stale' : ''}"><b>METAR</b>${d.metarRaw ? highlight(d.metarRaw) : 'nicht verfügbar'}</div>
-      <div class="raw"><b>TAF</b>${d.tafRaw ? formatTaf(d.tafRaw) : 'nicht verfügbar'}</div>
+      <div class="raw${stale ? ' stale' : ''}"><b>METAR<small>neu alle 30 oder 60 min, TREND gilt 2 h ab Beobachtung (OM-A 8.1.6.6)</small></b>${d.metarRaw ? highlight(d.metarRaw) : 'nicht verfügbar'}</div>
+      <div class="raw"><b>TAF<small class="${tafValid === false ? 'exp' : ''}">${taf?.valid ? 'gültig ' + PF.fmt(taf.valid[0]) + '–' + PF.fmt(taf.valid[1]) + (tafValid === false ? ' · abgelaufen' : '') + ' · ' : ''}LSZH/LSGG 30 h, Regional 9 h, Update alle 3 h (OM-A 8.1.6.6)</small></b>${d.tafRaw ? formatTaf(d.tafRaw) : 'nicht verfügbar'}</div>
       <ul class="checks">${[...ev.list, ...ev.notes].map(c => `<li><span class="dot ${c.sev}"></span><div class="ck">
         <div class="t">${esc(c.t)}${c.sev === 'warn' && c.failNote ? ' · ' + esc(c.failNote) : ''}</div>
         ${c.v ? `<div class="v">${esc(c.v)}${c.lim ? ' · Limite ' + esc(c.lim) : ''}</div>` : ''}
