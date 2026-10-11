@@ -87,6 +87,12 @@ details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-
 .raw{margin:0 14px 10px;padding:8px 10px;background:var(--surface2);border-left:2px solid var(--line2);font:400 13px/1.65 var(--f-wx);letter-spacing:.01em;white-space:pre-wrap;word-break:break-word}
 .raw b{font-weight:600;font-family:var(--f-cond);letter-spacing:.08em;font-size:10px;color:var(--soft);display:block}
 .raw.stale{border-left-color:var(--warn)}
+.taf{display:grid;grid-template-columns:max-content 6.5ch minmax(0,1fr);column-gap:10px;row-gap:3px;white-space:normal}
+.taf .row{display:contents}
+.taf .tm{color:var(--ink);font-weight:500}
+.taf .kd{color:var(--soft);line-height:1.35;padding-top:.15em}
+.taf .el{min-width:0}
+.taf .hdr{grid-column:1/-1;color:var(--soft);margin-bottom:2px}
 .raw .imc{color:var(--bad);background:var(--bad-t);padding:0 2px}
 .raw .vmc{color:var(--ok)}
 .raw .cb{color:var(--warn);background:var(--warn-t);padding:0 2px}
@@ -539,6 +545,31 @@ function resolveCodes() {
   return [...new Set(Object.values(resolved).filter(Boolean))];
 }
 
+// TAF als Tabelle: jede Änderungsgruppe eine Zeile, Zeit links
+function formatTaf(raw) {
+  const toks = raw.replace(/\s+/g, ' ').trim().split(' ');
+  let i = 0;
+  const hdr = [];
+  while (i < toks.length && !/^\d{4}\/\d{4}$/.test(toks[i])) hdr.push(toks[i++]);
+  const rows = [];
+  let cur = { tm: toks[i++] || '', kd: '', el: [] };
+  for (; i < toks.length; i++) {
+    const t = toks[i];
+    if (/^FM\d{6}$/.test(t)) { rows.push(cur); cur = { tm: t.slice(2, 4) + '/' + t.slice(4, 8), kd: 'FM', el: [] }; }
+    else if (/^(BECMG|TEMPO|INTER|PROB\d{2})$/.test(t)) {
+      rows.push(cur);
+      let kd = t;
+      if (/^PROB/.test(t) && /^(TEMPO|INTER)$/.test(toks[i + 1])) kd += ' ' + toks[++i];
+      const tm = /^\d{4}\/\d{4}$/.test(toks[i + 1]) ? toks[++i] : '';
+      cur = { tm, kd, el: [] };
+    } else if (/^(TX|TN)/.test(t)) hdr.push(t);
+    else cur.el.push(t);
+  }
+  rows.push(cur);
+  return `<div class="taf"><div class="hdr">${esc(hdr.join(' '))}</div>` + rows.map(r =>
+    `<div class="row"><span class="tm">${esc(r.tm)}</span><span class="kd">${esc(r.kd)}</span><span class="el">${highlight(r.el.join(' '))}</span></div>`).join('') + '</div>';
+}
+
 // METAR/TAF farbig: IMC rot, VMC grün, Gewitter/CB gelb
 function highlight(raw) {
   return raw.split(' ').map(t => {
@@ -598,7 +629,7 @@ function render(data, source) {
       <div class="meta">Zeitfenster ${PF.fmt(win[r][0])}–${PF.fmt(win[r][1])}${r === 'dep' ? ' (ETD ±1 h)' : ' (ETA ±1 h)'}</div>
       <div class="age ${ageCls}">METAR <strong>${age != null ? age : '–'}</strong> min alt${tafAge != null ? `<span class="taf">TAF ${PF.fmt(taf.issue)} · vor ${tafAge >= 120 ? hhmm(tafAge) + ' h' : tafAge + ' min'}</span>` : ''}</div>
       <div class="raw${stale ? ' stale' : ''}"><b>METAR</b>${d.metarRaw ? highlight(d.metarRaw) : 'nicht verfügbar'}</div>
-      <div class="raw"><b>TAF</b>${d.tafRaw ? highlight(d.tafRaw) : 'nicht verfügbar'}</div>
+      <div class="raw"><b>TAF</b>${d.tafRaw ? formatTaf(d.tafRaw) : 'nicht verfügbar'}</div>
       <ul class="checks">${[...ev.list, ...ev.notes].map(c => `<li><span class="dot ${c.sev}"></span><div class="ck">
         <div class="t">${esc(c.t)}${c.sev === 'warn' && c.failNote ? ' · ' + esc(c.failNote) : ''}</div>
         ${c.v ? `<div class="v">${esc(c.v)}${c.lim ? ' · Limite ' + esc(c.lim) : ''}</div>` : ''}
