@@ -64,11 +64,6 @@ details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-
 .optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px;padding:4px 14px 14px}
 .opt{display:grid;gap:4px;font-size:12px;color:var(--soft)}
 .opt select,.opt input{font:500 14px/1.2 var(--f-mono);padding:7px 8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0;width:100%}
-.mintable{padding:0 14px 14px;overflow-x:auto}
-.mintable table{border-collapse:collapse;width:100%;min-width:460px;font-size:13px}
-.mintable th{font:600 11px/1.2 var(--f-cond);letter-spacing:.08em;text-transform:uppercase;color:var(--soft);text-align:left;padding:6px 6px 6px 0;border-bottom:1px solid var(--line)}
-.mintable td{padding:6px 6px 6px 0;border-bottom:1px solid var(--line)}
-.mintable select,.mintable input{font:500 13px/1.2 var(--f-mono);padding:5px 6px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0;width:100%}
 .hint{font-size:12px;color:var(--soft);padding:0 14px 14px;margin:0;max-width:80ch}
 
 .summary{margin-top:22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);background:var(--surface)}
@@ -146,26 +141,12 @@ footer a{color:inherit}
   </div>
 
   <details class="opts" id="opts">
-    <summary>Optionen: Flugzeug, Piste, Minima</summary>
+    <summary>Optionen: Flugzeugtyp</summary>
     <div class="optgrid">
       <label class="opt">Flugzeug
         <select id="ac"><option value="E2">E190-E2 / E195-E2</option><option value="E1">E190 / E195 (E1)</option></select></label>
-      <label class="opt">Pistenzustand
-        <select id="rwy"><option value="dry">Dry</option><option value="wet">Wet</option></select></label>
-      <label class="opt">Take-off Minimum RVR/VIS (m)
-        <input id="tomin" type="number" min="100" step="25" value="400"></label>
     </div>
-    <div class="mintable">
-      <table>
-        <thead><tr><th>Flughafen</th><th>Approach</th><th>DA/H bzw. MDH (ft)</th><th>RVR/VIS (m)</th></tr></thead>
-        <tbody>
-          <tr><td>DEP (OEI-Rückkehr)</td><td><select id="dep-type"><option value="B">Type B (3D, z.B. ILS/LPV)</option><option value="A">Type A (2D/NPA)</option><option value="C">Circling</option></select></td><td><input id="dep-dh" type="number" value="200"></td><td><input id="dep-rvr" type="number" value="550"></td></tr>
-          <tr><td>DEST</td><td><select id="dest-type"><option value="B">Type B (3D, z.B. ILS/LPV)</option><option value="A">Type A (2D/NPA)</option><option value="C">Circling</option></select></td><td><input id="dest-dh" type="number" value="200"></td><td><input id="dest-rvr" type="number" value="550"></td></tr>
-          <tr><td>ALTN</td><td><select id="altn-type"><option value="B">Type B (3D, z.B. ILS/LPV)</option><option value="A">Type A (2D/NPA)</option><option value="C">Circling</option></select></td><td><input id="altn-dh" type="number" value="200"></td><td><input id="altn-rvr" type="number" value="550"></td></tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="hint">Standard ist ILS CAT I (200 ft / 550 m). Trage die Werte aus der Anflugkarte (OM-C) ein, die Zuschläge für das Alternate (+200 ft/+800 m bzw. +400 ft/+1500 m) rechnet die Seite selbst. Circling: mindestens 600 ft / 2400 m (Cat C).</p>
+    <p class="hint">Pistenzustand wird automatisch aus dem Wetter bestimmt: Regen oder Niesel ergibt Wet, Schnee, Eis oder gefrierender Niederschlag ergibt Contaminated. Minima: ILS CAT I (200 ft / 550 m), Take-off 400 m.</p>
   </details>
 </form>
 
@@ -386,10 +367,20 @@ const PF = (() => {
   }
 
   // ---- Limiten (OM-B 1.3.4 und OM-A 8.1.6.2) ----
+  // Pistenzustand aus dem Wetter: Schnee/Eis/gefrierend = contaminated, Regen/Niesel = wet
+  function surfaceOf(s) {
+    const wx = (s.wx || []).join(' ');
+    if (/SN|SG|PL|GS|GR|IC|FZRA|FZDZ|FZUP/.test(wx)) return 'cont';
+    if (/RA|DZ|UP/.test(wx)) return 'wet';
+    return 'dry';
+  }
+  const SURF = { dry: 'Dry', wet: 'Wet', cont: 'Contaminated' };
+
   function windLimits(role, ac, rwy) {
     let xw, gustIncl;
-    if (ac === 'E2') { xw = role === 'dep' ? 36 : 35; gustIncl = true; }
-    else { xw = rwy === 'wet' ? 31 : 38; gustIncl = false; }
+    // E2: Engine-Limite 36/35 kt inkl. Böen, RCC 3 20 kt; E1: dry 38, wet 31, Schnee/Slush 18 kt (ohne Böen)
+    if (ac === 'E2') { xw = rwy === 'cont' ? 20 : role === 'dep' ? 36 : 35; gustIncl = true; }
+    else { xw = rwy === 'cont' ? 18 : rwy === 'wet' ? 31 : 38; gustIncl = false; }
     let tw = 15, mean = 50;
     if (role === 'altn') { xw -= 10; tw -= 5; mean = 40; }
     return { xw, gustXw: gustIncl ? xw : xw + 5, tw, mean, gustIncl };
@@ -399,8 +390,11 @@ const PF = (() => {
   const visEff = s => (s.vis != null && s.rvr != null) ? Math.min(s.vis, s.rvr) : (s.rvr ?? s.vis);
 
   function windChecks(role, s, cfg, runways) {
-    const L = windLimits(role, cfg.ac, cfg.rwy);
+    const rwy = surfaceOf(s);
+    const L = windLimits(role, cfg.ac, rwy);
     const out = [];
+    const wxTxt = (s.wx || []).join(' ');
+    out.push({ id: 'surf', t: 'Pistenzustand', v: SURF[rwy] + (rwy !== 'dry' ? ' (' + wxTxt + ')' : ''), lim: rwy === 'cont' ? 'RWYCC, Limiten und Performance selbst genau prüfen' : '', ok: rwy !== 'cont', advisory: true, rank: { dry: 0, wet: 1, cont: 2 }[rwy], ref: rwy === 'cont' ? 'OM-B 1.3.4 / RCAM' : 'automatisch aus METAR/TAF' });
     const w = s.wind;
     if (!w) return out;
     out.push({ id: 'mean', t: 'Mean Wind', v: (w.vrb ? 'VRB' : String(w.dir).padStart(3, '0')) + '/' + w.spd + (w.gst ? 'G' + w.gst : '') + ' kt', lim: '≤ ' + L.mean + ' kt', ok: w.spd <= L.mean, ref: 'OM-A 8.1.6.2.2' });
@@ -419,7 +413,7 @@ const PF = (() => {
     }
     const { e, c } = best;
     const xwTxt = r0(c.xw) + (w.gst ? ' (Böen ' + r0(c.gx) + ')' : '') + ' kt';
-    out.push({ id: 'xw', t: 'Crosswind RWY ' + e.id, v: xwTxt, lim: L.gustIncl ? '≤ ' + L.xw + ' kt inkl. Böen' : '≤ ' + L.xw + ' kt, Böen ≤ ' + L.gustXw + ' kt', ok: best.xwOk, ref: role === 'altn' ? 'OM-A 8.1.6.2.2 (OM-B −10 kt)' : (cfg.ac === 'E2' ? 'OM-B E2 1.3.4.1.1' : 'OM-B E1 1.3.4.1.1 / OM-A 8.1.6.2.1') });
+    out.push({ id: 'xw', rank: { dry: 0, wet: 1, cont: 2 }[rwy], t: 'Crosswind RWY ' + e.id + ' · ' + SURF[rwy], v: xwTxt, lim: L.gustIncl ? '≤ ' + L.xw + ' kt inkl. Böen' : '≤ ' + L.xw + ' kt, Böen ≤ ' + L.gustXw + ' kt', ok: best.xwOk, ref: role === 'altn' ? 'OM-A 8.1.6.2.2 (OM-B −10 kt)' : (cfg.ac === 'E2' ? 'OM-B E2 1.3.4.1.1' : 'OM-B E1 1.3.4.1.1 / OM-A 8.1.6.2.1') });
     out.push({ id: 'tw', t: 'Tailwind RWY ' + e.id, v: r0(c.gt) + ' kt', lim: '≤ ' + L.tw + ' kt', ok: best.twOk, ref: role === 'altn' ? 'OM-A 8.1.6.2.2 (OM-B −5 kt)' : 'OM-B 1.3.4 (max. 15 kt)' });
     return out;
   }
@@ -470,14 +464,14 @@ const PF = (() => {
           else if (set.cat === 'prob' || set.cat === 'tempo-transient') sev = 'warn';
         }
         const prev = agg.get(c.id);
-        if (!prev || RANK[sev] > RANK[prev.sev] || (prev.sev === 'info' && sev === 'ok')) agg.set(c.id, { ...c, sev, src: set.src });
+        if (!prev || RANK[sev] > RANK[prev.sev] || (prev.sev === 'info' && sev === 'ok') || (RANK[sev] === RANK[prev.sev] && (c.rank || 0) > (prev.rank || 0))) agg.set(c.id, { ...c, sev, src: set.src });
       }
     }
     if (!taf) notes.push({ sev: 'warn', t: 'Kein TAF verfügbar', v: 'Planung nach OM-A 8.1.5.3.1 braucht eine Vorhersage für ETA ±1 h.' });
     else if (!tafStates.length) notes.push({ sev: 'warn', t: 'TAF deckt das Zeitfenster nicht ab', v: 'Gültig ' + fmt(taf.valid?.[0]) + '–' + fmt(taf.valid?.[1]) + ', benötigt ' + fmt(ws) + '–' + fmt(we) });
     if (!metar) notes.push({ sev: 'warn', t: 'Kein METAR verfügbar', v: '' });
     else if (now - metar.time > 90 * 60000) notes.push({ sev: 'warn', t: 'METAR veraltet', v: 'Beobachtung ' + fmt(metar.time) });
-    const order = ['tomin', 'toalt', 'plan', 'mean', 'xw', 'tw', 'adv'];
+    const order = ['tomin', 'toalt', 'plan', 'surf', 'mean', 'xw', 'tw', 'adv'];
     const list = [...agg.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
     const all = [...list, ...notes];
     const worst = all.reduce((w, c) => RANK[c.sev] > RANK[w] ? c.sev : w, 'ok');
@@ -504,10 +498,9 @@ function fillTimes() {
   etd.value = cur;
 }
 
+const MINIMA = { type: 'B', dh: 200, rvr: 550 };
 function config() {
-  const minima = {};
-  for (const [r] of ROLES) minima[r] = { type: $(r + '-type').value, dh: +$(r + '-dh').value, rvr: +$(r + '-rvr').value };
-  return { ac: $('ac').value, rwy: $('rwy').value, tomin: +$('tomin').value || 400, minima };
+  return { ac: $('ac').value, tomin: 400, minima: { dep: MINIMA, dest: MINIMA, altn: MINIMA } };
 }
 
 function times() {
@@ -644,11 +637,11 @@ function render(data, source) {
   const worst = sevs.includes('fail') ? 'fail' : sevs.includes('warn') ? 'warn' : 'ok';
   const toalt = res.dep?.list.find(c => c.id === 'toalt' && c.sev === 'warn');
   const txt = worst === 'ok' ? 'Alle geprüften Kriterien aus OM-A 8.1 sind erfüllt.'
-    : worst === 'warn' ? 'Erfüllt, aber mit Hinweisen (TEMPO/PROB, Gewitter oder fehlende Daten). Details unten.'
+    : worst === 'warn' ? 'Erfüllt, aber mit Hinweisen (TEMPO/PROB, Gewitter, Contaminated oder fehlende Daten). Details unten.'
     : 'Mindestens ein Kriterium ist nicht erfüllt. Details unten.';
   $('summary').hidden = false;
   $('summary').className = 'summary';
-  $('summary').innerHTML = `<span class="pill ${worst} big">${LABEL[worst]}</span><span class="txt">${txt}${toalt ? ' Take-off Alternate erforderlich.' : ''} ETD ${PF.fmt(etd)} · ETA ${PF.fmt(eta)} · ${cfg.ac} · ${cfg.rwy === 'wet' ? 'Wet' : 'Dry'}</span>`;
+  $('summary').innerHTML = `<span class="pill ${worst} big">${LABEL[worst]}</span><span class="txt">${txt}${toalt ? ' Take-off Alternate erforderlich.' : ''} ETD ${PF.fmt(etd)} · ETA ${PF.fmt(eta)} · ${cfg.ac}</span>`;
   const dataAge = generated ? Math.round((now - generated) / 60000) : null;
   $('stamp').textContent = source === 'manual' ? 'Eingefügte Daten · Stand ' + PF.fmt(now)
     : 'Wetterdaten von aviationweather.gov, abgeholt ' + PF.fmt(generated) + (dataAge != null ? ' (vor ' + dataAge + ' min)' : '') + ' · Seite aktualisiert alle 5 min';
@@ -694,7 +687,7 @@ for (const [r] of ROLES) {
 fillTimes();
 for (let m = 30; m <= 360; m += 15) $('eet').add(new Option(hhmm(m) + ' h', m));
 $('eet').value = '90';
-for (const id of ['ac', 'rwy', 'tomin', 'eet', 'dep-type', 'dep-dh', 'dep-rvr', 'dest-type', 'dest-dh', 'dest-rvr', 'altn-type', 'altn-dh', 'altn-rvr']) {
+for (const id of ['ac', 'eet']) {
   const el = $(id); const v = load(id); if (v != null) el.value = v;
   el.addEventListener('change', () => { store(id, el.value); if (lastData) render(lastData, $('manual').hidden ? 'live' : 'manual'); });
 }
