@@ -115,6 +115,27 @@ ul.checks li{display:grid;grid-template-columns:12px minmax(0,1fr);gap:10px;padd
 .err{margin-top:16px;padding:12px 14px;border:1px solid var(--bad);background:var(--bad-t);font-size:13.5px}
 .manual{margin-top:12px;background:var(--surface);border:1px solid var(--line);padding:12px 14px;display:grid;gap:8px}
 .manual textarea{width:100%;min-height:150px;font:400 12.5px/1.45 var(--f-mono);padding:8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0}
+.tabs{display:flex;gap:0;margin-top:20px;border-bottom:2px solid var(--ink)}
+.tabs button{background:transparent;border:0;padding:10px 18px;font:600 14px/1 var(--f-cond);letter-spacing:.08em;text-transform:uppercase;color:var(--soft);border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--red)}
+.apills{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0 6px}
+.apill{display:flex;align-items:baseline;gap:6px;background:var(--surface);border:1px solid var(--line2);color:var(--ink);padding:8px 12px;font:500 13px/1 var(--f-body)}
+.apill b{font:600 15px/1 var(--f-mono)}.apill span{font:600 12px/1 var(--f-mono);color:var(--soft)}
+.apill.on{border-color:var(--red);box-shadow:inset 0 -3px 0 var(--red)}
+details.ngroup{margin-top:12px;background:var(--surface);border:1px solid var(--line)}
+details.ngroup summary{cursor:pointer;padding:10px 14px;font:700 14px/1.2 var(--f-cond);letter-spacing:.06em;text-transform:uppercase}
+details.ngroup summary span{color:var(--soft);font-family:var(--f-mono);margin-left:6px}
+.notam{border-top:1px solid var(--line);padding:10px 14px;display:grid;gap:4px}
+.notam.sev{box-shadow:inset 3px 0 0 var(--bad)}
+.nh{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.nh b{font-size:14px}
+.ntopic{font:600 10.5px/1 var(--f-cond);letter-spacing:.1em;text-transform:uppercase;color:var(--soft);border:1px solid var(--line2);padding:3px 5px}
+.notam.sev .ntopic{color:var(--bad);border-color:var(--bad)}
+.nact{font:600 11px/1 var(--f-cond);letter-spacing:.06em;text-transform:uppercase;color:var(--warn);background:var(--warn-t);padding:3px 6px}
+.nid{margin-left:auto;font:500 12px/1 var(--f-mono);color:var(--soft)}
+.nt{font:500 12.5px/1.4 var(--f-mono);color:var(--soft)}
+.ne{font:400 13px/1.55 var(--f-wx);white-space:pre-wrap;word-break:break-word}
+.np{font-size:13.5px;line-height:1.5;color:var(--soft)}
 footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;font-size:12px;color:var(--soft);max-width:90ch}
 footer a{color:inherit}
 
@@ -155,6 +176,8 @@ footer a{color:inherit}
   </details>
 </form>
 
+<nav class="tabs" role="tablist"><button type="button" id="tb-wx" role="tab" aria-selected="true">Wetter</button><button type="button" id="tb-notam" role="tab" aria-selected="false">NOTAM</button></nav>
+<section id="tab-wx">
 <div id="error" class="err" hidden></div>
 <div id="manual" class="manual" hidden>
   <label for="manual-text"><b>Live-Daten nicht erreichbar.</b> METAR und TAF hier einfügen (z.B. aus SkyBriefing), dann erneut prüfen:</label>
@@ -165,6 +188,8 @@ footer a{color:inherit}
 <div id="summary" class="summary" hidden></div>
 <div id="results" class="results"></div>
 <div class="legend" id="legend" hidden><span><b class="imc">IMC</b> Sicht unter 5 km, Ceiling unter 1500 ft, RVR oder VV</span><span><b class="vmc">VMC</b> Sicht ab 5 km, Wolken ab 1500 ft</span><span><b class="cb">TS/CB</b> Gewitter, CB, TCU</span></div>
+</section>
+<section id="tab-notam" hidden><div id="notam-body"></div></section>
 
 <footer>
   Geprüft werden die Planungskriterien aus <b>OM-A 8.1</b> (8.1.3.3 Take-off Minima, 8.1.5.3 Planungsminima und Zeitfenster ETA ±1 h, 8.1.6.2 Windlimiten, 8.1.6.8 Anwendung der Wettermeldungen) und die Wind-Limiten aus OM-B 1.3.4.
@@ -691,6 +716,7 @@ async function run() {
     const msg = [unknown.length ? 'IATA-Code ' + unknown.join(', ') + ' unbekannt oder ohne Wetterstation.' : '', missing.length ? 'Keine Wetterdaten für ' + missing.join(', ') + '. Nicht jeder Flugplatz hat METAR/TAF.' : ''].filter(Boolean).join(' ');
     if (msg) { $('error').textContent = msg; $('error').hidden = false; }
     render(lastData, 'live');
+    if (!$('tab-notam').hidden) loadNotams().catch(() => {});
     clearTimeout(timer);
     timer = setTimeout(() => { if (document.visibilityState === 'visible') run(); else timer = null; }, 5 * 60000);
   } catch (e) {
@@ -724,6 +750,140 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 setInterval(() => { const d = new Date(); $('clock').textContent = d.toISOString().slice(11, 16) + ' UTC'; }, 1000);
 $('clock').textContent = new Date().toISOString().slice(11, 16) + ' UTC';
 if (!$('dep').value && !$('dest').value) { $('dep').value = 'LSZH'; $('dest').value = 'LSGG'; $('altn').value = 'LFSB'; }
+/* ===== NOTAM-Decoder ===== */
+const NOTAM_DATA = 'https://raw.githubusercontent.com/djsunji/preflight/notam/notam.json';
+const Q_SUBJ = {
+  MR: 'Piste', MX: 'Rollweg', MA: 'Bewegungsfläche', MN: 'Vorfeld', MS: 'Stoppbahn', MT: 'Schwelle', MK: 'Parkfläche', MD: 'Deklarierte Distanzen', MW: 'Tragfähigkeit', MU: 'Wendefläche Piste', MY: 'Schnellabrollweg', MB: 'Tragfähigkeit', MC: 'Clearway', MG: 'Rollführung', MH: 'Pistenfanganlage', MM: 'Markierung', MO: 'Hindernisfreiheit', MP: 'Abstellpositionen',
+  LA: 'Anflugbefeuerung', LB: 'Flugplatz-Leuchtfeuer', LC: 'Pistenmittellinienfeuer', LD: 'Landerichtungsanzeiger', LE: 'Pistenrandbefeuerung', LF: 'Blitzfeuer', LG: 'Pilotengesteuerte Befeuerung', LH: 'Hochleistungs-Pistenbefeuerung', LI: 'Pistenendkennfeuer', LJ: 'Pistenausrichtungsfeuer', LK: 'CAT-II-Anflugbefeuerung', LL: 'Niederleistungs-Pistenbefeuerung', LM: 'Mittelleistungs-Pistenbefeuerung', LP: 'PAPI', LR: 'Gesamte Landebefeuerung', LS: 'Stoppbahnbefeuerung', LT: 'Schwellenbefeuerung', LV: 'VASIS', LW: 'Heliport-Befeuerung', LX: 'Rollweg-Mittellinienfeuer', LY: 'Rollwegrandbefeuerung', LZ: 'Aufsetzzonenbefeuerung',
+  IC: 'ILS', ID: 'ILS-DME', IG: 'Glide Path', II: 'Inner Marker', IL: 'Localizer', IM: 'Middle Marker', IO: 'Outer Marker', IS: 'ILS CAT I', IT: 'ILS CAT II', IU: 'ILS CAT III', IW: 'MLS', IX: 'Locator (outer)', IY: 'Locator (middle)',
+  NA: 'Alle Funknavigationsanlagen', NB: 'NDB', ND: 'DME', NF: 'Fan Marker', NL: 'Locator', NM: 'VOR/DME', NN: 'TACAN', NT: 'VORTAC', NV: 'VOR', NX: 'Peiler',
+  PA: 'STAR', PB: 'VFR-Anflugverfahren', PC: 'Notverfahren', PD: 'SID', PE: 'VFR-Abflugverfahren', PF: 'Verkehrsflusssteuerung', PH: 'Warteverfahren', PI: 'Instrumentenanflug', PK: 'VFR-Anflug', PL: 'Hindernisfreigrenze', PM: 'Flugplatz-Betriebsminima', PN: 'Lärmschutzverfahren', PO: 'OCA', PP: 'OCH', PR: 'Funkausfallverfahren', PT: 'Übergangshöhe', PU: 'Fehlanflugverfahren', PX: 'Mindestwartehöhe', PZ: 'ADIZ-Verfahren',
+  OA: 'Flugberatung', OB: 'Hindernis', OE: 'Einreisebestimmungen', OL: 'Hindernisbefeuerung', OR: 'Rettungsleitstelle',
+  FA: 'Flugplatz', FB: 'Bremswirkung', FC: 'Wolkenhöhenmesser', FD: 'Andocksystem', FE: 'Sauerstoff', FF: 'Feuerwehr/Rettung', FG: 'Bodenverkehrsleitung', FH: 'Helikopterlandeplatz', FI: 'Enteisung', FJ: 'Öl', FL: 'Landerichtungsanzeiger', FM: 'Flugwetterdienst', FO: 'Nebelauflösung', FP: 'Heliport', FS: 'Schneeräumung', FT: 'Transmissometer (RVR)', FU: 'Treibstoff', FW: 'Windrichtungsanzeiger', FZ: 'Zoll',
+  CA: 'Boden-Bord-Funk', CB: 'ADS-B', CC: 'ADS-C', CD: 'CPDLC', CE: 'Streckenradar', CG: 'GCA', CL: 'SELCAL', CM: 'Rollverkehrsradar', CP: 'PAR', CS: 'SSR', CT: 'Anflugradar',
+  AA: 'Mindesthöhe', AC: 'Kontrollzone/Luftraum', AD: 'ADIZ', AE: 'Kontrollbezirk', AF: 'FIR', AH: 'Oberer Kontrollbezirk', AL: 'Niedrigste nutzbare FL', AN: 'RNAV-Route', AP: 'Meldepunkt', AR: 'ATS-Route', AT: 'TMA', AU: 'UIR', AX: 'Kreuzungspunkt', AZ: 'ATZ',
+  SA: 'ATIS', SB: 'ATS-Meldestelle', SC: 'Bezirkskontrolle', SE: 'Fluginformationsdienst', SF: 'AFIS', SL: 'Flusssteuerung', SP: 'Anflugkontrolle', SS: 'Flight Service', ST: 'Tower', SU: 'Obere Bezirkskontrolle', SV: 'VOLMET',
+  RA: 'Luftraumreservation', RD: 'Gefahrengebiet', RM: 'Militärisches Übungsgebiet', RO: 'Überflug', RP: 'Sperrgebiet', RR: 'Beschränkungsgebiet', RT: 'Temporäres Beschränkungsgebiet',
+  WA: 'Flugvorführung', WB: 'Kunstflug', WC: 'Fesselballon', WD: 'Sprengung', WE: 'Übung', WF: 'Luftbetankung', WG: 'Segelflug', WH: 'Sprengarbeiten', WJ: 'Banner-/Zielschlepp', WL: 'Freiballon', WM: 'Schiessen', WP: 'Fallschirmspringen', WR: 'Radioaktives Material', WS: 'Gasabfackelung', WT: 'Massenflug', WU: 'Drohnen', WV: 'Formationsflug', WW: 'Vulkanaktivität', WY: 'Luftbildflug', WZ: 'Modellflug',
+  GA: 'GNSS (Flugplatz)', GW: 'GNSS (Gebiet)'
+};
+const Q_COND = {
+  LA: 'auf Notstrom', LB: 'nur für stationierte Luftfahrzeuge', LC: 'geschlossen', LD: 'unsicher', LE: 'ohne Notstrom', LF: 'Störung', LG: 'ohne Kennung', LH: 'gesperrt für schwerere Luftfahrzeuge', LI: 'für IFR gesperrt', LK: 'als Festfeuer', LL: 'nutzbar mit Einschränkung von Länge/Breite', LN: 'nachts gesperrt', LP: 'verboten', LR: 'nur Pisten und Rollwege', LS: 'Unterbrechungen möglich', LT: 'beschränkt', LV: 'für VFR gesperrt', LW: 'findet statt', LX: 'in Betrieb, Vorsicht',
+  AC: 'wegen Wartung ausser Betrieb', AD: 'tagsüber verfügbar', AF: 'flugvermessen, zuverlässig', AG: 'in Betrieb, nur bodengeprüft', AH: 'Betriebszeiten geändert', AK: 'wieder normal in Betrieb', AL: 'in Betrieb mit bekannten Einschränkungen', AM: 'nur militärisch', AN: 'nachts verfügbar', AO: 'in Betrieb', AP: 'verfügbar mit PPR', AR: 'auf Anfrage verfügbar', AS: 'ausser Betrieb', AU: 'nicht verfügbar', AW: 'ganz aufgehoben', AX: 'Abschaltung aufgehoben',
+  CA: 'aktiviert', CC: 'abgeschlossen', CD: 'deaktiviert', CE: 'errichtet', CF: 'Frequenz geändert', CG: 'herabgestuft', CH: 'geändert', CI: 'Kennung geändert', CL: 'neu ausgerichtet', CM: 'verschoben', CN: 'aufgehoben', CO: 'in Betrieb', CP: 'reduzierte Leistung', CR: 'vorübergehend ersetzt', CS: 'installiert', CT: 'im Test, nicht benutzen',
+  HA: 'Bremswirkung', HB: 'Reibungskoeffizient', HC: 'Schneeglätte', HD: 'Trockenschnee', HE: 'Wasser', HF: 'frei von Schnee und Eis', HG: 'Grasmähen', HH: 'Gefahr', HI: 'Eis', HJ: 'Start geplant', HK: 'Vogelzug', HL: 'Schneeräumung beendet', HM: 'markiert', HN: 'Nassschnee/Matsch', HO: 'schneebedeckt', HP: 'Schneeräumung im Gang', HQ: 'abgesagt', HR: 'stehendes Wasser', HS: 'Sanden im Gang', HV: 'Arbeiten beendet', HW: 'Bauarbeiten', HX: 'Vogelansammlung', HY: 'Schneewälle', HZ: 'gefrorene Spurrillen',
+  XX: '', TT: ''
+};
+const ABBR = {
+  RWY: 'Piste', TWY: 'Rollweg', TWYS: 'Rollwege', CLSD: 'geschlossen', 'U/S': 'ausser Betrieb', AVBL: 'verfügbar', UNAVBL: 'nicht verfügbar', WIP: 'Bauarbeiten', BTN: 'zwischen', ACFT: 'Luftfahrzeug', APCH: 'Anflug', DEP: 'Abflug', ARR: 'Ankunft',
+  OBST: 'Hindernis', HGT: 'Höhe', ELEV: 'Elevation', LGT: 'Befeuerung', LGTD: 'beleuchtet', TEMPO: 'vorübergehend', MAX: 'max.', MNM: 'Minimum', REF: 'siehe', ACT: 'aktiv', PPR: 'nur mit Voranmeldung', OPS: 'Betrieb', HR: 'Stunden', DLY: 'täglich',
+  EXC: 'ausser', SR: 'Sonnenaufgang', SS: 'Sonnenuntergang', H24: 'durchgehend', CTN: 'Vorsicht', TAX: 'Rollen', CL: 'Mittellinie', THR: 'Schwelle', DTHR: 'versetzte Schwelle', ALS: 'Anflugbefeuerung', ABN: 'Leuchtfeuer', APN: 'Vorfeld', PRKG: 'Parken',
+  FREQ: 'Frequenz', TWR: 'Tower', GND: 'Ground', UNREL: 'unzuverlässig', PSN: 'Position', ABV: 'über', BLW: 'unter', FM: 'ab', TIL: 'bis', WEF: 'gültig ab', EST: 'geschätzt', PERM: 'dauerhaft', EQPT: 'Ausrüstung', SVC: 'Dienst', BA: 'Bremswirkung',
+  OPR: 'in Betrieb', OPN: 'offen', RTE: 'Route', ALT: 'Höhe', CHG: 'Änderung', CHANGED: 'geändert', REQ: 'erforderlich', RQRD: 'erforderlich', PROC: 'Verfahren', ACTIVITY: 'Aktivität', AD: 'Flugplatz', AP: 'Flughafen', COORD: 'Koordination', AUTH: 'Bewilligung',
+  INSTL: 'installiert', MAINT: 'Wartung', SKED: 'planmässig', WI: 'innerhalb', RADIUS: 'Radius', ENTRY: 'Einflug', PROHIBITED: 'verboten', RESTRICTED: 'beschränkt', DUE: 'wegen', CRANE: 'Kran', CRANES: 'Kräne', ERECTED: 'errichtet', MARKED: 'markiert',
+  MON: 'Mo', TUE: 'Di', WED: 'Mi', THU: 'Do', FRI: 'Fr', SAT: 'Sa', SUN: 'So', AND: 'und', TO: 'bis', ON: 'auf', IN: 'in', OF: 'von', FOR: 'für', WITH: 'mit', NOT: 'nicht', ONLY: 'nur', ALL: 'alle', DURING: 'während', AT: 'bei', BY: 'durch', NO: 'kein',
+  INOP: 'ausser Betrieb', AREA: 'Bereich', INFORCE: 'in Kraft', REMAIN: 'bleiben', UNCHANGED: 'unverändert', CANCELLED: 'aufgehoben', AVAILABLE: 'verfügbar', 'OUT OF SERVICE': 'ausser Betrieb', SFC: 'Boden', GP: 'Glide Path', LOC: 'Localizer', MKR: 'Marker', VIS: 'Sicht', HEL: 'Helikopter', RQ: 'erforderlich', INFO: 'Info', MIL: 'militärisch', CIV: 'zivil', FLT: 'Flug', FLTS: 'Flüge', LDG: 'Landung', TKOF: 'Start', PAX: 'Passagiere', FUEL: 'Treibstoff'
+};
+const TOPIC = [['MR', 'Piste'], ['L', 'Befeuerung'], ['I', 'ILS'], ['N', 'Navigation'], ['G', 'GNSS'], ['P', 'Verfahren'], ['M', 'Rollwege/Vorfeld'], ['F', 'Flugplatzdienste'], ['C', 'Funk/Radar'], ['S', 'ATS'], ['A', 'Luftraum'], ['R', 'Luftraum'], ['W', 'Warnung'], ['O', 'Hindernis/Info'], ['', 'Sonstiges']];
+const SEVERE = /^(LC|AS|AU|LI|LN|LH|CT|AW)$/;
+
+function notamDate(s) {
+  if (!s || /PERM/.test(s)) return null;
+  const m = s.match(/(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+  return m ? new Date(Date.UTC(2000 + +m[1], +m[2] - 1, +m[3], +m[4], +m[5])) : null;
+}
+
+function parseNotam(raw) {
+  const msg = raw.replace(/\r/g, '');
+  const f = k => { const m = msg.match(new RegExp('(?:^|\\s)' + k + '\\)\\s*([\\s\\S]*?)(?=\\s[A-G]\\)\\s|$)')); return m ? m[1].trim() : ''; };
+  const q = (f('Q').split('/')[1] || '').toUpperCase();
+  const cText = f('C');
+  return {
+    id: msg.split(/\s/)[0], type: (msg.match(/NOTAM([NRC])/) || [])[1] || 'N', q, subj: q.slice(1, 3), cond: q.slice(3, 5),
+    start: notamDate(f('B')), end: notamDate(cText), perm: /PERM/.test(cText), est: /EST/.test(cText), sched: f('D'), text: f('E'), lower: f('F'), upper: f('G'), raw: msg
+  };
+}
+
+function plain(text) {
+  return text.replace(/OUT OF SERVICE/g, '§U/S').replace(/\bDUE TO\b/g, '§DUE').replace(/\bIN FORCE\b/g, '§INFORCE').split(/(\s+|[.,;:()])/).map(w => {
+    const k = w.replace('§', '');
+    return ABBR[k] ? ABBR[k] : w;
+  }).join('');
+}
+
+function topicOf(n) { return (TOPIC.find(([p]) => n.subj.startsWith(p)) || TOPIC[TOPIC.length - 1])[1]; }
+const dmy = d => d ? String(d.getUTCDate()).padStart(2, '0') + '.' + String(d.getUTCMonth() + 1).padStart(2, '0') + '. ' + PF.fmt(d) : '';
+
+function groupNotams(list, now) {
+  const day = d => Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const today = day(now), tomorrow = today + 86400000;
+  const g = { heute: [], morgen: [], woche: [], laenger: [], spaeter: [] };
+  for (const n of list) {
+    if (n.type === 'C') continue;
+    if (n.end && n.end < now) continue;
+    const s = n.start ? day(n.start) : today;
+    (s === today ? g.heute : s === tomorrow ? g.morgen : s > tomorrow ? g.spaeter : s >= today - 6 * 86400000 ? g.woche : g.laenger).push(n);
+  }
+  const order = TOPIC.map(t => t[1]);
+  for (const k in g) g[k].sort((a, b) => (SEVERE.test(b.cond) - SEVERE.test(a.cond)) || order.indexOf(topicOf(a)) - order.indexOf(topicOf(b)) || (a.start - b.start));
+  return g;
+}
+
+let notamDoc = null, notamAirport = null;
+async function loadNotams() {
+  notamDoc = await getJson(NOTAM_DATA + '?t=' + Math.floor(Date.now() / 60000));
+  renderNotams();
+}
+
+function renderNotams() {
+  const box = $('notam-body');
+  if (!notamDoc) { box.innerHTML = '<p class="stamp">Lade NOTAMs …</p>'; return; }
+  const now = new Date();
+  const { etd, eta } = times();
+  const airports = ROLES.map(([r, rl]) => ({ r, rl, id: resolved[r] })).filter(a => a.id);
+  if (!airports.length) { box.innerHTML = '<p class="stamp">Bitte oben Flughäfen eingeben.</p>'; return; }
+  if (!airports.some(a => a.id === notamAirport)) notamAirport = airports[0].id;
+  const age = notamDoc.generated ? Math.round((now - new Date(notamDoc.generated)) / 60000) : null;
+  const pills = airports.map(a => {
+    const list = (notamDoc.notams[a.id] || []).map(x => parseNotam(x.msg || x));
+    const cnt = list.filter(n => n.type !== 'C' && !(n.end && n.end < now)).length;
+    const known = notamDoc.airports.includes(a.id);
+    return `<button type="button" class="apill${a.id === notamAirport ? ' on' : ''}" data-ap="${a.id}"><b>${a.id}</b> ${a.rl}<span>${known ? cnt : '–'}</span></button>`;
+  }).join('');
+  const cur = airports.find(a => a.id === notamAirport);
+  const win = cur.r === 'dep' ? [new Date(+etd - 3600000), new Date(+etd + 3600000)] : [new Date(+eta - 3600000), new Date(+eta + 3600000)];
+  let body;
+  if (!notamDoc.airports.includes(cur.id)) {
+    body = `<div class="err">Für ${cur.id} werden noch keine NOTAMs abgeholt. Trage den Flughafen in <a href="https://github.com/djsunji/preflight/edit/main/notam-airports.txt" target="_blank" rel="noopener">notam-airports.txt</a> ein, dann erscheinen seine NOTAMs nach der nächsten Abholung (alle 30 min).</div>`;
+  } else {
+    const g = groupNotams((notamDoc.notams[cur.id] || []).map(x => parseNotam(x.msg || x)), now);
+    const sec = (key, title, open) => g[key].length ? `<details class="ngroup" ${open ? 'open' : ''}><summary>${title} <span>${g[key].length}</span></summary>${g[key].map(n => notamCard(n, win)).join('')}</details>` : '';
+    body = sec('heute', 'Neu ab heute', true) + sec('morgen', 'Ab morgen', true) + sec('woche', 'Neu in den letzten 7 Tagen', true) + sec('laenger', 'Seit längerem aktiv', false) + sec('spaeter', 'Später', false) || '<p class="stamp">Keine aktiven NOTAMs.</p>';
+  }
+  box.innerHTML = `<div class="apills">${pills}</div><p class="stamp">NOTAMs von der FAA-NOTAM-Suche, abgeholt ${PF.fmt(notamDoc.generated ? new Date(notamDoc.generated) : null)}${age != null ? ' (vor ' + age + ' min)' : ''} · Zeitfenster ${PF.fmt(win[0])}–${PF.fmt(win[1])} (${cur.r === 'dep' ? 'ETD' : 'ETA'} ±1 h)</p>` + body;
+  box.querySelectorAll('.apill').forEach(b => b.addEventListener('click', () => { notamAirport = b.dataset.ap; renderNotams(); }));
+}
+
+function notamCard(n, win) {
+  const active = (!n.start || n.start <= win[1]) && (n.perm || !n.end || n.end >= win[0]);
+  const severe = SEVERE.test(n.cond);
+  const what = [Q_SUBJ[n.subj], Q_COND[n.cond]].filter(Boolean).join(' · ');
+  const period = (n.start ? dmy(n.start) : '') + ' – ' + (n.perm ? 'dauerhaft' : dmy(n.end) + (n.est ? ' (geschätzt)' : ''));
+  return `<article class="notam${severe ? ' sev' : ''}">
+    <div class="nh"><span class="ntopic">${esc(topicOf(n))}</span><b>${esc(what || n.q)}</b>${active ? '<span class="nact">im Zeitfenster</span>' : ''}<span class="nid">${esc(n.id)}</span></div>
+    <div class="nt">${esc(period)}${n.sched ? ' · ' + esc(n.sched) : ''}${n.lower || n.upper ? ' · ' + esc(n.lower) + '–' + esc(n.upper) : ''}</div>
+    <div class="ne">${esc(n.text)}</div>
+    <div class="np">${esc(plain(n.text))}</div>
+  </article>`;
+}
+
+function showTab(t) {
+  for (const k of ['wx', 'notam']) { $('tab-' + k).hidden = k !== t; $('tb-' + k).setAttribute('aria-selected', k === t); }
+  if (t === 'notam') { renderNotams(); loadNotams().catch(e => { $('notam-body').innerHTML = '<div class="err">NOTAMs konnten nicht geladen werden (' + esc(e.message) + ').</div>'; }); }
+}
+$('tb-wx').addEventListener('click', () => showTab('wx'));
+$('tb-notam').addEventListener('click', () => showTab('notam'));
+
 run();
 </script>
 </body>
