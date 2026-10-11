@@ -54,12 +54,15 @@ taf = latest(awc_xml("tafs", "TAF"), "issue_time")  # TAF gibt es nur als XML
 wanted = set(metar) | set(taf)
 
 base = "https://davidmegginson.github.io/ourairports-data/"
-alias, name = {}, {}
+alias, name, iata = {}, {}, {}
 for a in cached("airports.csv", base + "airports.csv"):
     icao = next((c for c in (a.get("icao_code"), a.get("gps_code"), a.get("ident")) if c in wanted), None)
     if icao:
         alias[a["ident"]] = icao
         name[icao] = a.get("name", "")
+        code = a.get("iata_code", "")
+        if len(code) == 3 and (code not in iata or a.get("type") == "large_airport"):
+            iata[code] = icao
 
 rwy = {}
 for r in cached("runways.csv", base + "runways.csv"):
@@ -74,7 +77,7 @@ for r in cached("runways.csv", base + "runways.csv"):
     rwy.setdefault(icao, []).append({"id": ident, "alignment": hdg})
 
 os.makedirs(OUT, exist_ok=True)
-doc = {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "metar": metar, "taf": taf, "name": name, "rwy": rwy}
+doc = {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "metar": metar, "taf": taf, "name": name, "iata": iata, "rwy": rwy}
 with open(os.path.join(OUT, "wx.json"), "w", encoding="utf-8") as f:
     json.dump(doc, f, separators=(",", ":"), ensure_ascii=False)
 print(f"{len(metar)} METAR, {len(taf)} TAF, {len(rwy)} Flughäfen mit Pisten")
