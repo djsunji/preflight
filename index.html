@@ -6,7 +6,7 @@
 <title>Preflight Wx</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* EFB look: square geometry, thin rules, Swiss red as the only strong accent.
    Layout: three airport fields in one row, results as three equal columns below. */
@@ -18,6 +18,7 @@
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   --f-cond:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --f-wx:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0E1114; --surface:#161A1F; --surface2:#1B2026; --ink:#E6E9EC; --soft:#9DA6B0; --line:#2A3139; --line2:#3B444E;
@@ -83,12 +84,12 @@ details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-
 .pill{margin-left:auto;font:700 12px/1 var(--f-cond);letter-spacing:.08em;padding:5px 8px;text-transform:uppercase}
 .pill.ok{background:var(--ok-t);color:var(--ok)}.pill.warn{background:var(--warn-t);color:var(--warn)}.pill.fail{background:var(--bad-t);color:var(--bad)}
 .card .meta{padding:0 14px 8px;font-size:12px;color:var(--soft)}
-.raw{margin:0 14px 10px;padding:8px 10px;background:var(--surface2);border-left:2px solid var(--line2);font:400 12px/1.5 var(--f-mono);white-space:pre-wrap;word-break:break-word}
+.raw{margin:0 14px 10px;padding:8px 10px;background:var(--surface2);border-left:2px solid var(--line2);font:400 13px/1.65 var(--f-wx);letter-spacing:.01em;white-space:pre-wrap;word-break:break-word}
 .raw b{font-weight:600;font-family:var(--f-cond);letter-spacing:.08em;font-size:10px;color:var(--soft);display:block}
 .raw.stale{border-left-color:var(--warn)}
-.raw .imc{color:var(--bad);background:var(--bad-t);font-weight:600}
-.raw .vmc{color:var(--ok);font-weight:600}
-.raw .cb{color:var(--warn);background:var(--warn-t);font-weight:600}
+.raw .imc{color:var(--bad);background:var(--bad-t);padding:0 2px}
+.raw .vmc{color:var(--ok)}
+.raw .cb{color:var(--warn);background:var(--warn-t);padding:0 2px}
 .age{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin:0 14px 10px;padding:8px 10px;font:500 12px/1.2 var(--f-body);color:var(--soft)}
 .age strong{font:700 26px/1 var(--f-mono);font-variant-numeric:tabular-nums}
 .age.ok{background:var(--ok-t)}.age.ok strong{color:var(--ok)}
