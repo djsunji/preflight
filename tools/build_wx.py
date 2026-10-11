@@ -1,6 +1,7 @@
 """Holt alle aktuellen METAR/TAF von aviationweather.gov und Pistenrichtungen
 von OurAirports und schreibt sie als wx.json, die die Seite ohne CORS-Probleme laden kann."""
-import csv, gzip, io, json, os, sys, urllib.request
+import csv, gzip, json, os, sys, urllib.request
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "out"
@@ -24,6 +25,11 @@ def awc(name):
     return list(csv.DictReader(lines[start:]))
 
 
+def awc_xml(name, tag):
+    root = ET.fromstring(get(f"https://aviationweather.gov/data/cache/{name}.cache.xml.gz"))
+    return [{c.tag: (c.text or "") for c in el} for el in root.iter(tag)]
+
+
 def latest(rows, timecol):
     out = {}
     for r in rows:
@@ -44,7 +50,7 @@ def cached(name, url):
 
 
 metar = latest(awc("metars"), "observation_time")
-taf = latest(awc("tafs"), "issue_time")
+taf = latest(awc_xml("tafs", "TAF"), "issue_time")  # TAF gibt es nur als XML
 wanted = set(metar) | set(taf)
 
 base = "https://davidmegginson.github.io/ourairports-data/"
