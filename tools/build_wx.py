@@ -64,7 +64,7 @@ for a in cached("airports.csv", base + "airports.csv"):
 rwy = {}
 for r in cached("runways.csv", base + "runways.csv"):
     icao = alias.get(r.get("airport_ident"))
-    if not icao or r.get("closed") == "1" or not r.get("le_ident"):
+    if not icao or r.get("closed") == "1" or not r.get("le_ident") or "H" in r["le_ident"]:
         continue
     try:
         hdg = round(float(r["le_heading_degT"]))
