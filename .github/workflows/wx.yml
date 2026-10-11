@@ -1,0 +1,39 @@
+name: Wetterdaten
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/wx.yml", "tools/build_wx.py"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wx
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - id: day
+        run: echo "d=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: cache
+          key: ourairports-${{ steps.day.outputs.d }}
+      - run: python3 tools/build_wx.py out cache
+      - name: Auf Branch data veröffentlichen
+        run: |
+          cd out
+          git init -q -b data
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wx.json
+          git commit -qm "Wetterdaten $(date -u +%H%MZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data

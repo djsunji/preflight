@@ -119,7 +119,7 @@ footer a{color:inherit}
 
   <div class="actions">
     <button class="go" type="submit">Wetter prüfen</button>
-    <span class="stamp" id="stamp">Live METAR/TAF von aviationweather.gov · aktualisiert alle 5 min</span>
+    <span class="stamp" id="stamp">Lade Wetterdaten …</span>
   </div>
 
   <details class="opts" id="opts">
@@ -162,7 +162,7 @@ footer a{color:inherit}
 
 <footer>
   Geprüft werden die Planungskriterien aus <b>OM-A 8.1</b> (8.1.3.3 Take-off Minima, 8.1.5.3 Planungsminima und Zeitfenster ETA ±1 h, 8.1.6.2 Windlimiten, 8.1.6.8 Anwendung der Wettermeldungen) und die Wind-Limiten aus OM-B 1.3.4.
-  Pistenrichtungen stammen aus der Flughafen-Datenbank von aviationweather.gov. TEMPO/PROB werden nach der EASA-Tabelle gewertet (AMC1 CAT.OP.MPA.182): andauernde Verschlechterung zählt, kurzlebige (TS, SH) und PROB nur als Hinweis.
+  METAR und TAF holt eine GitHub Action alle 5 Minuten bei aviationweather.gov ab, Pistenrichtungen stammen von OurAirports. TEMPO/PROB werden nach der EASA-Tabelle gewertet (AMC1 CAT.OP.MPA.182): andauernde Verschlechterung zählt, kurzlebige (TS, SH) und PROB nur als Hinweis.
   Diese Seite ist ein Hilfsmittel und ersetzt weder OFP, NOTAM noch das Handbuch. Massgebend bleibt der Entscheid der Crew.
 </footer>
 </div>
@@ -469,7 +469,7 @@ const PF = (() => {
 
 /* ===== Seite ===== */
 const ROLES = [['dep', 'Departure'], ['dest', 'Destination'], ['altn', 'Alternate']];
-const API = 'https://aviationweather.gov/api/data/';
+const DATA = 'https://raw.githubusercontent.com/djsunji/preflight/data/wx.json';
 const $ = id => document.getElementById(id);
 let lastData = null, timer = null;
 
@@ -502,20 +502,13 @@ async function getJson(url) {
   return txt.trim() ? JSON.parse(txt) : [];
 }
 
+let generated = null;
 async function fetchLive(ids) {
-  const q = ids.join(',');
-  const [metars, tafs, airports] = await Promise.all([
-    getJson(API + 'metar?format=json&ids=' + q),
-    getJson(API + 'taf?format=json&ids=' + q),
-    getJson(API + 'airport?format=json&ids=' + q).catch(() => [])
-  ]);
+  // Die Daten holt eine GitHub Action alle 5 min bei aviationweather.gov ab (direkter Abruf scheitert an CORS)
+  const doc = await getJson(DATA + '?t=' + Math.floor(Date.now() / 60000));
+  generated = doc.generated ? new Date(doc.generated) : null;
   const data = {};
-  for (const id of ids) {
-    const mt = (metars || []).filter(x => x.icaoId === id).sort((a, b) => (b.obsTime || 0) - (a.obsTime || 0))[0];
-    const tf = (tafs || []).filter(x => x.icaoId === id).sort((a, b) => String(b.issueTime).localeCompare(String(a.issueTime)))[0];
-    const ap = (airports || []).find(x => x.icaoId === id);
-    data[id] = { metarRaw: mt?.rawOb || null, tafRaw: tf?.rawTAF || null, name: ap?.name || mt?.name || '', runways: ap?.runways || [] };
-  }
+  for (const id of ids) data[id] = { metarRaw: doc.metar?.[id] || null, tafRaw: doc.taf?.[id] || null, name: doc.name?.[id] || '', runways: doc.rwy?.[id] || [] };
   return data;
 }
 
@@ -578,7 +571,10 @@ function render(data, source) {
   $('summary').hidden = false;
   $('summary').className = 'summary';
   $('summary').innerHTML = `<span class="pill ${worst} big">${LABEL[worst]}</span><span class="txt">${txt}${toalt ? ' Take-off Alternate erforderlich.' : ''} ETD ${PF.fmt(etd)} · ETA ${PF.fmt(eta)} · ${cfg.ac} · ${cfg.rwy === 'wet' ? 'Wet' : 'Dry'}</span>`;
-  $('stamp').textContent = (source === 'manual' ? 'Eingefügte Daten' : 'Live von aviationweather.gov') + ' · Stand ' + PF.fmt(now) + (source === 'manual' ? '' : ' · nächste Aktualisierung in 5 min');
+  const dataAge = generated ? Math.round((now - generated) / 60000) : null;
+  $('stamp').textContent = source === 'manual' ? 'Eingefügte Daten · Stand ' + PF.fmt(now)
+    : 'Wetterdaten von aviationweather.gov, abgeholt ' + PF.fmt(generated) + (dataAge != null ? ' (vor ' + dataAge + ' min)' : '') + ' · Seite aktualisiert alle 5 min';
+  if (source !== 'manual' && dataAge > 30) { $('error').textContent = 'Die Wetterdaten sind ' + dataAge + ' Minuten alt. Die automatische Abholung hängt vermutlich; METAR/TAF bitte zusätzlich prüfen.'; $('error').hidden = false; }
 }
 
 async function run() {
@@ -598,7 +594,7 @@ async function run() {
     clearTimeout(timer);
     timer = setTimeout(() => { if (document.visibilityState === 'visible') run(); else timer = null; }, 5 * 60000);
   } catch (e) {
-    $('error').textContent = 'Die Live-Daten von aviationweather.gov konnten nicht geladen werden (' + e.message + '). Du kannst METAR und TAF unten einfügen.';
+    $('error').textContent = 'Die Wetterdaten konnten nicht geladen werden (' + e.message + '). Du kannst METAR und TAF unten einfügen.';
     $('error').hidden = false;
     $('manual').hidden = false;
     $('stamp').textContent = 'Live-Daten nicht erreichbar';
