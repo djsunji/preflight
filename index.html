@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Preflight Wx</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* EFB look: square geometry, thin rules, Swiss red as the only strong accent.
+   Layout: three airport fields in one row, results as three equal columns below. */
+:root{
+  --bg:#F1F2F4; --surface:#FFFFFF; --surface2:#F6F7F8; --ink:#1A1F25; --soft:#56606A; --line:#D6DADF; --line2:#B9C0C8;
+  --red:#E30613; --red-t:rgba(227,6,19,.07); --char:#262C33; --onchar:#FFFFFF;
+  --ok:#1D7A46; --ok-t:rgba(29,122,70,.09); --warn:#9A6400; --warn-t:rgba(214,145,0,.12); --bad:#C0261F; --bad-t:rgba(192,38,31,.08);
+  --focus:#E30613;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-cond:"IBM Plex Sans Condensed","IBM Plex Sans",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0E1114; --surface:#161A1F; --surface2:#1B2026; --ink:#E6E9EC; --soft:#9DA6B0; --line:#2A3139; --line2:#3B444E;
+  --red:#FF3341; --red-t:rgba(255,51,65,.12); --char:#DCE1E6; --onchar:#111418;
+  --ok:#4CC27F; --ok-t:rgba(76,194,127,.12); --warn:#F0B43C; --warn-t:rgba(240,180,60,.13); --bad:#FF6A62; --bad-t:rgba(255,106,98,.11);
+  --focus:#FF5A63; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0E1114; --surface:#161A1F; --surface2:#1B2026; --ink:#E6E9EC; --soft:#9DA6B0; --line:#2A3139; --line2:#3B444E;
+  --red:#FF3341; --red-t:rgba(255,51,65,.12); --char:#DCE1E6; --onchar:#111418;
+  --ok:#4CC27F; --ok-t:rgba(76,194,127,.12); --warn:#F0B43C; --warn-t:rgba(240,180,60,.13); --bad:#FF6A62; --bad-t:rgba(255,106,98,.11);
+  --focus:#FF5A63; color-scheme:dark}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body)}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+
+header{display:flex;align-items:center;gap:14px;border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:20px;flex-wrap:wrap}
+header h1{margin:0;font:700 22px/1.1 var(--f-cond);letter-spacing:.01em}
+header h1 span{color:var(--red)}
+header .sub{margin-left:auto;font:500 12px/1.3 var(--f-mono);color:var(--soft);text-align:right}
+
+form{display:grid;gap:14px}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.field{background:var(--surface);border:1px solid var(--line);padding:12px 14px 14px;display:grid;gap:6px}
+.field label{font:600 11px/1 var(--f-cond);letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+.field label b{color:var(--ink);font-weight:700}
+.field input{width:100%;font:600 34px/1.1 var(--f-mono);letter-spacing:.14em;text-transform:uppercase;border:0;border-bottom:2px solid var(--line2);background:transparent;color:var(--ink);padding:4px 0;border-radius:0}
+.field input:focus{outline:none;border-bottom-color:var(--red)}
+.field .name{font-size:12px;color:var(--soft);min-height:1.5em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button{font:600 14px/1 var(--f-body);cursor:pointer;border-radius:0}
+.go{background:var(--red);color:#fff;border:0;padding:13px 22px;letter-spacing:.02em}
+.go:hover{filter:brightness(1.08)}
+.ghost{background:transparent;color:var(--ink);border:1px solid var(--line2);padding:12px 16px}
+.stamp{font:500 12px/1.4 var(--f-mono);color:var(--soft)}
+
+details.opts{background:var(--surface);border:1px solid var(--line)}
+details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-cond);letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
+.optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px;padding:4px 14px 14px}
+.opt{display:grid;gap:4px;font-size:12px;color:var(--soft)}
+.opt select,.opt input{font:500 14px/1.2 var(--f-mono);padding:7px 8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0;width:100%}
+.mintable{padding:0 14px 14px;overflow-x:auto}
+.mintable table{border-collapse:collapse;width:100%;min-width:460px;font-size:13px}
+.mintable th{font:600 11px/1.2 var(--f-cond);letter-spacing:.08em;text-transform:uppercase;color:var(--soft);text-align:left;padding:6px 6px 6px 0;border-bottom:1px solid var(--line)}
+.mintable td{padding:6px 6px 6px 0;border-bottom:1px solid var(--line)}
+.mintable select,.mintable input{font:500 13px/1.2 var(--f-mono);padding:5px 6px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0;width:100%}
+.hint{font-size:12px;color:var(--soft);padding:0 14px 14px;margin:0;max-width:80ch}
+
+.summary{margin-top:22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--line);background:var(--surface)}
+.summary .big{font:700 20px/1 var(--f-cond);letter-spacing:.04em}
+.summary .txt{font-size:13px;color:var(--soft);flex:1 1 260px;min-width:0}
+
+.results{margin-top:12px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);min-width:0}
+.card.fail{border-top:4px solid var(--bad)}.card.warn{border-top:4px solid var(--warn)}.card.ok{border-top:4px solid var(--ok)}
+.card .hd{display:flex;align-items:baseline;gap:10px;padding:12px 14px 6px;flex-wrap:wrap}
+.card .role{font:600 11px/1 var(--f-cond);letter-spacing:.12em;text-transform:uppercase;color:var(--soft)}
+.card .icao{font:600 22px/1 var(--f-mono);letter-spacing:.08em}
+.pill{margin-left:auto;font:700 12px/1 var(--f-cond);letter-spacing:.08em;padding:5px 8px;text-transform:uppercase}
+.pill.ok{background:var(--ok-t);color:var(--ok)}.pill.warn{background:var(--warn-t);color:var(--warn)}.pill.fail{background:var(--bad-t);color:var(--bad)}
+.card .meta{padding:0 14px 8px;font-size:12px;color:var(--soft)}
+.raw{margin:0 14px 10px;padding:8px 10px;background:var(--surface2);border-left:2px solid var(--line2);font:400 12px/1.5 var(--f-mono);white-space:pre-wrap;word-break:break-word}
+.raw b{font-weight:600;font-family:var(--f-cond);letter-spacing:.08em;font-size:10px;color:var(--soft);display:block}
+.raw.stale{border-left-color:var(--warn)}
+ul.checks{list-style:none;margin:0;padding:0 0 6px}
+ul.checks li{display:grid;grid-template-columns:12px minmax(0,1fr);gap:10px;padding:8px 14px;border-top:1px solid var(--line)}
+.dot{width:10px;height:10px;margin-top:5px;border-radius:50%}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.fail{background:var(--bad)}.dot.info{background:var(--line2)}
+.ck .t{font-weight:600;font-size:13.5px}
+.ck .v{font:500 12.5px/1.45 var(--f-mono);font-variant-numeric:tabular-nums}
+.ck .s{font-size:11.5px;color:var(--soft)}
+.err{margin-top:16px;padding:12px 14px;border:1px solid var(--bad);background:var(--bad-t);font-size:13.5px}
+.manual{margin-top:12px;background:var(--surface);border:1px solid var(--line);padding:12px 14px;display:grid;gap:8px}
+.manual textarea{width:100%;min-height:150px;font:400 12.5px/1.45 var(--f-mono);padding:8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0}
+footer{margin-top:28px;border-top:1px solid var(--line);padding-top:12px;font-size:12px;color:var(--soft);max-width:90ch}
+footer a{color:inherit}
+
+@media (max-width:820px){.fields,.results{grid-template-columns:minmax(0,1fr)}.field input{font-size:30px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Preflight <span>Wx</span></h1>
+  <div class="sub" id="clock">UTC</div>
+</header>
+
+<form id="f" autocomplete="off">
+  <div class="fields">
+    <div class="field"><label for="dep"><b>DEP</b> · Departure</label><input id="dep" maxlength="4" placeholder="LSZH" spellcheck="false" inputmode="latin" autocapitalize="characters"><div class="name" id="dep-name"></div></div>
+    <div class="field"><label for="dest"><b>DEST</b> · Destination</label><input id="dest" maxlength="4" placeholder="LSGG" spellcheck="false" inputmode="latin" autocapitalize="characters"><div class="name" id="dest-name"></div></div>
+    <div class="field"><label for="altn"><b>ALTN</b> · Alternate</label><input id="altn" maxlength="4" placeholder="LFSB" spellcheck="false" inputmode="latin" autocapitalize="characters"><div class="name" id="altn-name"></div></div>
+  </div>
+
+  <div class="actions">
+    <button class="go" type="submit">Wetter prüfen</button>
+    <span class="stamp" id="stamp">Live METAR/TAF von aviationweather.gov · aktualisiert alle 5 min</span>
+  </div>
+
+  <details class="opts" id="opts">
+    <summary>Optionen: Flugzeug, Zeiten, Minima</summary>
+    <div class="optgrid">
+      <label class="opt">Flugzeug
+        <select id="ac"><option value="E2">E190-E2 / E195-E2</option><option value="E1">E190 / E195 (E1)</option></select></label>
+      <label class="opt">Pistenzustand
+        <select id="rwy"><option value="dry">Dry</option><option value="wet">Wet</option></select></label>
+      <label class="opt">ETD (UTC)
+        <input id="etd" type="time" step="300"></label>
+      <label class="opt">Flugzeit (hh:mm)
+        <input id="eet" value="01:30" pattern="\d{1,2}:\d{2}" inputmode="numeric"></label>
+      <label class="opt">Take-off Minimum RVR/VIS (m)
+        <input id="tomin" type="number" min="100" step="25" value="400"></label>
+    </div>
+    <div class="mintable">
+      <table>
+        <thead><tr><th>Flughafen</th><th>Approach</th><th>DA/H bzw. MDH (ft)</th><th>RVR/VIS (m)</th></tr></thead>
+        <tbody>
+          <tr><td>DEP (OEI-Rückkehr)</td><td><select id="dep-type"><option value="B">Type B (3D, z.B. ILS/LPV)</option><option value="A">Type A (2D/NPA)</option><option value="C">Circling</option></select></td><td><input id="dep-dh" type="number" value="200"></td><td><input id="dep-rvr" type="number" value="550"></td></tr>
+          <tr><td>DEST</td><td><select id="dest-type"><option value="B">Type B (3D, z.B. ILS/LPV)</option><option value="A">Type A (2D/NPA)</option><option value="C">Circling</option></select></td><td><input id="dest-dh" type="number" value="200"></td><td><input id="dest-rvr" type="number" value="550"></td></tr>
+          <tr><td>ALTN</td><td><select id="altn-type"><option value="B">Type B (3D, z.B. ILS/LPV)</option><option value="A">Type A (2D/NPA)</option><option value="C">Circling</option></select></td><td><input id="altn-dh" type="number" value="200"></td><td><input id="altn-rvr" type="number" value="550"></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">Standard ist ILS CAT I (200 ft / 550 m). Trage die Werte aus der Anflugkarte (OM-C) ein, die Zuschläge für das Alternate (+200 ft/+800 m bzw. +400 ft/+1500 m) rechnet die Seite selbst. Circling: mindestens 600 ft / 2400 m (Cat C).</p>
+  </details>
+</form>
+
+<div id="error" class="err" hidden></div>
+<div id="manual" class="manual" hidden>
+  <label for="manual-text"><b>Live-Daten nicht erreichbar.</b> METAR und TAF hier einfügen (z.B. aus SkyBriefing), dann erneut prüfen:</label>
+  <textarea id="manual-text" spellcheck="false" placeholder="METAR LSZH 111320Z 24008KT 9999 FEW040 14/06 Q1021 NOSIG&#10;TAF LSZH 111125Z 1112/1218 24010KT 9999 FEW040 ..."></textarea>
+  <div><button class="ghost" type="button" id="manual-go">Eingefügte Daten prüfen</button></div>
+</div>
+
+<div id="summary" class="summary" hidden></div>
+<div id="results" class="results"></div>
+
+<footer>
+  Geprüft werden die Planungskriterien aus <b>OM-A 8.1</b> (8.1.3.3 Take-off Minima, 8.1.5.3 Planungsminima und Zeitfenster ETA ±1 h, 8.1.6.2 Windlimiten, 8.1.6.8 Anwendung der Wettermeldungen) und die Wind-Limiten aus OM-B 1.3.4.
+  Pistenrichtungen stammen aus der Flughafen-Datenbank von aviationweather.gov. TEMPO/PROB werden nach der EASA-Tabelle gewertet (AMC1 CAT.OP.MPA.182): andauernde Verschlechterung zählt, kurzlebige (TS, SH) und PROB nur als Hinweis.
+  Diese Seite ist ein Hilfsmittel und ersetzt weder OFP, NOTAM noch das Handbuch. Massgebend bleibt der Entscheid der Crew.
+</footer>
+</div>
+
+<script>
+/* ===== Wetter-Parser und OM-A-Checks (reine Funktionen) ===== */
+const PF = (() => {
+  const WX_RE = /^(\+|-|VC)?(MI|BC|PR|DR|BL|SH|TS|FZ)?((?:DZ|RA|SN|SG|IC|PL|GR|GS|UP|BR|FG|FU|VA|DU|SA|HZ|PO|SQ|FC|SS|DS)+)?$/;
+  const PERSISTENT = /(FG|BR|HZ|FU|DU|SA|VA)/;
+
+  function resolveTime(dd, hh, mm, ref) {
+    let y = ref.getUTCFullYear(), m = ref.getUTCMonth();
+    const rd = ref.getUTCDate();
+    if (dd < rd - 15) m += 1; else if (dd > rd + 15) m -= 1;
+    return new Date(Date.UTC(y, m, dd, hh, mm || 0));
+  }
+
+  function parseElements(tokens) {
+    const e = {};
+    for (let i = 0; i < tokens.length; i++) {
+      const t = tokens[i];
+      let m;
+      if ((m = t.match(/^(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?(KT|MPS|KMH)$/))) {
+        const f = m[4] === 'MPS' ? 1.94384 : m[4] === 'KMH' ? 0.539957 : 1;
+        e.wind = { vrb: m[1] === 'VRB', dir: m[1] === 'VRB' ? null : +m[1], spd: Math.round(+m[2] * f), gst: m[3] ? Math.round(+m[3] * f) : null };
+      } else if (/^\d{3}V\d{3}$/.test(t)) {
+        // Schwankende Richtung: Mittelwert darf verwendet werden (OM-A 8.1.6.8)
+      } else if (t === 'CAVOK') {
+        e.cavok = true; e.vis = 10000; e.clouds = []; e.wx = [];
+      } else if ((m = t.match(/^(\d{4})(NDV)?$/)) && !('vis' in e)) {
+        e.vis = +m[1] === 9999 ? 10000 : +m[1];
+      } else if ((m = t.match(/^(\d{4})(N|NE|E|SE|S|SW|W|NW)$/))) {
+        e.vis = Math.min(e.vis ?? 99999, +m[1]);
+      } else if ((m = t.match(/^(P|M)?(\d+)?(?:(\d)\/(\d+))?SM$/))) {
+        let v = (+m[2] || 0) + (m[3] ? +m[3] / +m[4] : 0);
+        if (/^\d+$/.test(tokens[i - 1] || '') && m[3] && tokens[i - 1].length <= 2) v += +tokens[i - 1];
+        e.vis = Math.round(v * 1609);
+        if (m[1] === 'P') e.vis = Math.max(e.vis, 10000);
+      } else if ((m = t.match(/^R(\d{2}[LCR]?)\/([PM])?(\d{4})(?:V([PM])?(\d{4}))?(FT)?(?:\/?[UDN])?$/))) {
+        let lo = Math.min(+m[3], m[5] ? +m[5] : +m[3]);
+        if (m[6]) lo = Math.round(lo * 0.3048);
+        e.rvr = Math.min(e.rvr ?? 99999, lo);
+      } else if ((m = t.match(/^(FEW|SCT|BKN|OVC)(\d{3}|\/\/\/)(CB|TCU|\/\/\/)?$/))) {
+        (e.clouds = e.clouds || []).push({ cov: m[1], base: m[2] === '///' ? null : +m[2] * 100, cb: m[3] === 'CB', tcu: m[3] === 'TCU' });
+      } else if ((m = t.match(/^VV(\d{3}|\/\/\/)$/))) {
+        (e.clouds = e.clouds || []).push({ cov: 'VV', base: m[1] === '///' ? 0 : +m[1] * 100 });
+      } else if (t === 'NSC' || t === 'SKC' || t === 'CLR' || t === 'NCD') {
+        e.clouds = [];
+      } else if (t === 'NSW') {
+        e.wx = [];
+      } else if (t.length >= 2 && WX_RE.test(t) && /[A-Z]{2}/.test(t)) {
+        (e.wx = e.wx || []).push(t);
+      }
+    }
+    return e;
+  }
+
+  function derive(s) {
+    const clouds = s.clouds || [];
+    let ceil = null, cb = false;
+    for (const c of clouds) {
+      if ((c.cov === 'BKN' || c.cov === 'OVC' || c.cov === 'VV') && c.base != null) ceil = ceil == null ? c.base : Math.min(ceil, c.base);
+      if (c.cb || c.tcu) cb = cb || c.cb;
+    }
+    const wx = s.wx || [];
+    const ts = wx.some(w => /TS/.test(w));
+    return { ...s, ceil, cb, ts };
+  }
+
+  function merge(a, b) {
+    const r = { ...a };
+    for (const k of ['wind', 'vis', 'rvr', 'clouds', 'wx']) if (k in b) r[k] = b[k];
+    if (!('rvr' in b) && 'vis' in b) delete r.rvr;
+    return r;
+  }
+
+  function parseMetar(raw) {
+    const body = raw.replace(/\s+/g, ' ').trim();
+    const cut = body.search(/\s(NOSIG|TEMPO|BECMG|RMK)\b/);
+    const main = cut > 0 ? body.slice(0, cut) : body;
+    const trend = cut > 0 ? body.slice(cut + 1) : '';
+    const toks = main.split(' ');
+    let i = 0;
+    while (/^(METAR|SPECI|COR|AUTO)$/.test(toks[i])) i++;
+    const icao = toks[i];
+    const tm = (toks[i + 1] || '').match(/^(\d{2})(\d{2})(\d{2})Z$/);
+    const now = new Date();
+    const time = tm ? resolveTime(+tm[1], +tm[2], +tm[3], now) : null;
+    const el = parseElements(toks.slice(i + 2));
+    return { icao, time, raw: body, trend, state: derive(el) };
+  }
+
+  function parseTaf(raw, nowRef) {
+    const body = raw.replace(/\s+/g, ' ').trim().replace(/\sRMK\s.*$/, '');
+    const toks = body.split(' ');
+    let i = 0;
+    while (/^(TAF|AMD|COR|RTD)$/.test(toks[i])) i++;
+    const icao = toks[i++];
+    const ref0 = nowRef || new Date();
+    let issue = ref0;
+    const im = (toks[i] || '').match(/^(\d{2})(\d{2})(\d{2})Z$/);
+    if (im) { issue = resolveTime(+im[1], +im[2], +im[3], ref0); i++; }
+    const per = s => { const m = s && s.match(/^(\d{2})(\d{2})\/(\d{2})(\d{2})$/); return m ? [resolveTime(+m[1], +m[2], 0, issue), resolveTime(+m[3], +m[4], 0, issue)] : null; };
+    const valid = per(toks[i]);
+    if (valid) i++;
+    const groups = [];
+    let cur = { kind: 'BASE', from: valid ? valid[0] : issue, to: valid ? valid[1] : null, toks: [], label: 'TAF' };
+    const push = () => { cur.el = parseElements(cur.toks); groups.push(cur); };
+    for (; i < toks.length; i++) {
+      const t = toks[i];
+      let m;
+      if ((m = t.match(/^FM(\d{2})(\d{2})(\d{2})$/))) {
+        push(); cur = { kind: 'FM', from: resolveTime(+m[1], +m[2], +m[3], issue), to: null, toks: [], label: t };
+      } else if (t === 'BECMG' || t === 'TEMPO' || t === 'INTER' || /^PROB\d{2}$/.test(t)) {
+        push();
+        let kind = t === 'INTER' ? 'TEMPO' : t, label = t, prob = null;
+        if (/^PROB/.test(t)) {
+          prob = +t.slice(4); kind = 'PROB';
+          if (toks[i + 1] === 'TEMPO' || toks[i + 1] === 'INTER') { i++; label += ' TEMPO'; }
+        }
+        const p = per(toks[i + 1]);
+        if (p) { i++; label += ' ' + toks[i]; }
+        cur = { kind, prob, from: p ? p[0] : null, to: p ? p[1] : null, toks: [], label };
+      } else if (/^(TX|TN)/.test(t) || /^QNH/.test(t)) {
+        // Temperatur/QNH: nicht relevant
+      } else cur.toks.push(t);
+    }
+    push();
+    return { icao, issue, valid, raw: body, groups };
+  }
+
+  // Vorherrschende Zustände zur Zeit t (BECMG im Übergang: alter und neuer Zustand)
+  function prevailingAt(taf, t) {
+    let states = [{ ...taf.groups[0].el }];
+    for (const g of taf.groups.slice(1)) {
+      if (g.kind === 'FM' && g.from <= t) states = states.map(s => merge(s, g.el));
+      else if (g.kind === 'BECMG' && g.from && g.from <= t) {
+        if (t >= g.to) states = states.map(s => merge(s, g.el));
+        else states = states.flatMap(s => [s, merge(s, g.el)]);
+      }
+    }
+    return states;
+  }
+
+  const fmt = d => d ? String(d.getUTCHours()).padStart(2, '0') + String(d.getUTCMinutes()).padStart(2, '0') + 'Z' : '';
+
+  // Alle Wetterzustände im Zeitfenster [ws, we]
+  function statesInWindow(taf, ws, we) {
+    const out = [];
+    if (!taf) return out;
+    const vs = taf.valid ? taf.valid[0] : taf.issue, ve = taf.valid ? taf.valid[1] : null;
+    const s0 = new Date(Math.max(ws, vs)), s1 = ve ? new Date(Math.min(we, ve)) : we;
+    if (s0 > s1) return out;
+    const times = [];
+    for (let t = +s0; t <= +s1; t += 15 * 60000) times.push(new Date(t));
+    times.push(s1);
+    for (const g of taf.groups) if (g.from && g.from > s0 && g.from < s1) times.push(g.from);
+    const seen = new Set();
+    for (const t of times) for (const s of prevailingAt(taf, t)) {
+      const k = JSON.stringify(s);
+      if (!seen.has(k)) { seen.add(k); out.push({ cat: 'main', src: 'TAF ' + fmt(t), state: derive(s) }); }
+    }
+    for (const g of taf.groups) {
+      if (g.kind !== 'TEMPO' && g.kind !== 'PROB') continue;
+      if (!g.from || !(g.from < s1 && g.to > s0)) continue;
+      const at = new Date(Math.max(g.from, s0));
+      for (const s of prevailingAt(taf, at)) {
+        const st = derive(merge(s, g.el));
+        let cat = 'prob';
+        if (g.kind === 'TEMPO') {
+          const wx = (g.el.wx || []).join(' ');
+          const transient = /TS|SH|SQ|GR|FC/.test(wx) && !PERSISTENT.test(wx.replace(/SH|TS/g, ''));
+          cat = transient ? 'tempo-transient' : 'tempo';
+        }
+        out.push({ cat, src: g.label, state: st });
+      }
+    }
+    return out;
+  }
+
+  // ---- Windkomponenten ----
+  function components(wind, hdg) {
+    const spdOf = v => v || 0;
+    if (wind.vrb) return { hw: -spdOf(wind.spd), xw: spdOf(wind.spd), gx: spdOf(wind.gst || wind.spd), gt: spdOf(wind.gst || wind.spd), tw: spdOf(wind.spd) };
+    const a = (wind.dir - hdg) * Math.PI / 180;
+    const g = wind.gst || wind.spd;
+    const hw = wind.spd * Math.cos(a);
+    return { hw, xw: Math.abs(wind.spd * Math.sin(a)), gx: Math.abs(g * Math.sin(a)), tw: Math.max(0, -hw), gt: Math.max(0, -g * Math.cos(a)) };
+  }
+
+  function runwayEnds(runways) {
+    const ends = [];
+    for (const r of runways || []) {
+      const ids = String(r.id || '').split('/');
+      let hdg = parseFloat(r.alignment);
+      if (!isFinite(hdg)) { const n = parseInt(ids[0], 10); if (!isFinite(n)) continue; hdg = n * 10; }
+      ends.push({ id: ids[0], hdg: ((hdg % 360) + 360) % 360 });
+      if (ids[1]) ends.push({ id: ids[1], hdg: (hdg + 180) % 360 });
+    }
+    return ends;
+  }
+
+  // ---- Limiten (OM-B 1.3.4 und OM-A 8.1.6.2) ----
+  function windLimits(role, ac, rwy) {
+    let xw, gustIncl;
+    if (ac === 'E2') { xw = role === 'dep' ? 36 : 35; gustIncl = true; }
+    else { xw = rwy === 'wet' ? 31 : 38; gustIncl = false; }
+    let tw = 15, mean = 50;
+    if (role === 'altn') { xw -= 10; tw -= 5; mean = 40; }
+    return { xw, gustXw: gustIncl ? xw : xw + 5, tw, mean, gustIncl };
+  }
+
+  const r0 = v => Math.round(v);
+  const visEff = s => (s.vis != null && s.rvr != null) ? Math.min(s.vis, s.rvr) : (s.rvr ?? s.vis);
+
+  function windChecks(role, s, cfg, runways) {
+    const L = windLimits(role, cfg.ac, cfg.rwy);
+    const out = [];
+    const w = s.wind;
+    if (!w) return out;
+    out.push({ id: 'mean', t: 'Mean Wind', v: (w.vrb ? 'VRB' : String(w.dir).padStart(3, '0')) + '/' + w.spd + (w.gst ? 'G' + w.gst : '') + ' kt', lim: '≤ ' + L.mean + ' kt', ok: w.spd <= L.mean, ref: 'OM-A 8.1.6.2.2' });
+    const ends = runwayEnds(runways);
+    if (!ends.length) {
+      out.push({ id: 'xw', t: 'Crosswind / Tailwind', v: 'Keine Pistendaten', lim: 'XW ≤ ' + L.xw + ' kt, TW ≤ ' + L.tw + ' kt', ok: null, ref: 'OM-B 1.3.4' });
+      return out;
+    }
+    let best = null;
+    for (const e of ends) {
+      const c = components(w, e.hdg);
+      const xwOk = (L.gustIncl ? c.gx : c.xw) <= L.xw && c.gx <= L.gustXw;
+      const twOk = c.gt <= L.tw;
+      const score = (xwOk && twOk ? 0 : 1000) + Math.max(0, c.gx - L.gustXw) + Math.max(0, c.gt - L.tw) - c.hw / 100;
+      if (!best || score < best.score) best = { e, c, xwOk, twOk, score };
+    }
+    const { e, c } = best;
+    const xwTxt = r0(c.xw) + (w.gst ? ' (Böen ' + r0(c.gx) + ')' : '') + ' kt';
+    out.push({ id: 'xw', t: 'Crosswind RWY ' + e.id, v: xwTxt, lim: L.gustIncl ? '≤ ' + L.xw + ' kt inkl. Böen' : '≤ ' + L.xw + ' kt, Böen ≤ ' + L.gustXw + ' kt', ok: best.xwOk, ref: role === 'altn' ? 'OM-A 8.1.6.2.2 (OM-B −10 kt)' : (cfg.ac === 'E2' ? 'OM-B E2 1.3.4.1.1' : 'OM-B E1 1.3.4.1.1 / OM-A 8.1.6.2.1') });
+    out.push({ id: 'tw', t: 'Tailwind RWY ' + e.id, v: r0(c.gt) + ' kt', lim: '≤ ' + L.tw + ' kt', ok: best.twOk, ref: role === 'altn' ? 'OM-A 8.1.6.2.2 (OM-B −5 kt)' : 'OM-B 1.3.4 (max. 15 kt)' });
+    return out;
+  }
+
+  function minimaChecks(role, s, cfg) {
+    const m = cfg.minima[role];
+    let dh = +m.dh || 0, rvr = +m.rvr || 0;
+    if (m.type === 'C') { dh = Math.max(dh, 600); rvr = Math.max(rvr, 2400); }
+    const ve = visEff(s);
+    const vTxt = ve == null ? 'n/a' : (ve >= 10000 ? '≥10 km' : ve + ' m') + (s.rvr != null ? ' (RVR)' : '');
+    const cTxt = s.ceil == null ? 'keine' : s.ceil + ' ft';
+    const out = [];
+    if (role === 'dep') {
+      out.push({ id: 'tomin', t: 'Take-off Minimum', v: vTxt, lim: '≥ ' + cfg.tomin + ' m', ok: ve == null ? null : ve >= cfg.tomin, ref: 'OM-A 8.1.3.3' });
+      const okVis = ve == null || ve >= rvr, okCeil = s.ceil == null || s.ceil >= dh;
+      out.push({ id: 'toalt', t: 'Rückkehr OEI (Landeminima)', v: 'Ceiling ' + cTxt + ', ' + vTxt, lim: 'Ceiling ≥ ' + dh + ' ft, RVR/VIS ≥ ' + rvr + ' m', ok: okVis && okCeil, softFail: true, failNote: 'Take-off Alternate erforderlich', ref: 'OM-A 8.1.5.3.2' });
+    } else if (role === 'dest') {
+      const needCeil = m.type !== 'B';
+      const okVis = ve == null || ve >= rvr, okCeil = !needCeil || s.ceil == null || s.ceil >= dh;
+      out.push({ id: 'plan', t: 'Planungsminima Destination', v: (needCeil ? 'Ceiling ' + cTxt + ', ' : '') + vTxt, lim: (needCeil ? 'Ceiling ≥ ' + dh + ' ft, ' : '') + 'RVR/VIS ≥ ' + rvr + ' m', ok: okVis && okCeil, ref: 'OM-A 8.1.5.3.4' });
+    } else {
+      const add = m.type === 'B' ? [200, 800] : [400, 1500];
+      const nd = dh + add[0], nr = rvr + add[1];
+      const okVis = ve == null || ve >= nr, okCeil = s.ceil == null || s.ceil >= nd;
+      out.push({ id: 'plan', t: 'Planungsminima Alternate', v: 'Ceiling ' + cTxt + ', ' + vTxt, lim: 'Ceiling ≥ ' + nd + ' ft, RVR/VIS ≥ ' + nr + ' m', ok: okVis && okCeil, ref: 'OM-A 8.1.5.3.5' });
+    }
+    return out;
+  }
+
+  const RANK = { ok: 0, info: 0, warn: 1, fail: 2 };
+
+  function evaluate(role, metar, taf, cfg, runways, ws, we, now) {
+    const sets = [];
+    const nowIn = now >= ws && now <= we;
+    if (metar && (role === 'dep' || nowIn)) sets.push({ cat: 'main', src: 'METAR ' + fmt(metar.time), state: metar.state });
+    const tafStates = statesInWindow(taf, ws, we);
+    sets.push(...tafStates);
+    const agg = new Map();
+    const notes = [];
+    for (const set of sets) {
+      const s = set.state;
+      const checks = [...minimaChecks(role, s, cfg), ...windChecks(role, s, cfg, runways)];
+      if (s.ts || s.cb) checks.push({ id: 'adv', t: 'Gewitter / CB', v: [...(s.wx || []).filter(w => /TS/.test(w)), s.cb ? 'CB' : ''].filter(Boolean).join(' '), lim: 'Adverse Weather beachten', ok: false, advisory: true, ref: 'OM-A 8.1.5.5.2' });
+      for (const c of checks) {
+        let sev = c.ok == null ? 'info' : c.ok ? 'ok' : 'fail';
+        if (sev === 'fail') {
+          if (c.softFail || c.advisory) sev = 'warn';
+          else if (set.cat === 'prob' || set.cat === 'tempo-transient') sev = 'warn';
+        }
+        const prev = agg.get(c.id);
+        if (!prev || RANK[sev] > RANK[prev.sev] || (prev.sev === 'info' && sev === 'ok')) agg.set(c.id, { ...c, sev, src: set.src });
+      }
+    }
+    if (!taf) notes.push({ sev: 'warn', t: 'Kein TAF verfügbar', v: 'Planung nach OM-A 8.1.5.3.1 braucht eine Vorhersage für ETA ±1 h.' });
+    else if (!tafStates.length) notes.push({ sev: 'warn', t: 'TAF deckt das Zeitfenster nicht ab', v: 'Gültig ' + fmt(taf.valid?.[0]) + '–' + fmt(taf.valid?.[1]) + ', benötigt ' + fmt(ws) + '–' + fmt(we) });
+    if (!metar) notes.push({ sev: 'warn', t: 'Kein METAR verfügbar', v: '' });
+    else if (now - metar.time > 90 * 60000) notes.push({ sev: 'warn', t: 'METAR veraltet', v: 'Beobachtung ' + fmt(metar.time) });
+    const order = ['tomin', 'toalt', 'plan', 'mean', 'xw', 'tw', 'adv'];
+    const list = [...agg.values()].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+    const all = [...list, ...notes];
+    const worst = all.reduce((w, c) => RANK[c.sev] > RANK[w] ? c.sev : w, 'ok');
+    return { list, notes, worst };
+  }
+
+  return { parseMetar, parseTaf, evaluate, statesInWindow, windLimits, fmt };
+})();
+
+/* ===== Seite ===== */
+const ROLES = [['dep', 'Departure'], ['dest', 'Destination'], ['altn', 'Alternate']];
+const API = 'https://aviationweather.gov/api/data/';
+const $ = id => document.getElementById(id);
+let lastData = null, timer = null;
+
+function store(k, v) { try { localStorage.setItem('pfwx.' + k, v); } catch (e) {} }
+function load(k) { try { return localStorage.getItem('pfwx.' + k); } catch (e) { return null; } }
+
+function nowUtcTime() { const d = new Date(Date.now() + 30 * 60000); d.setUTCMinutes(Math.ceil(d.getUTCMinutes() / 5) * 5); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); }
+
+function config() {
+  const minima = {};
+  for (const [r] of ROLES) minima[r] = { type: $(r + '-type').value, dh: +$(r + '-dh').value, rvr: +$(r + '-rvr').value };
+  return { ac: $('ac').value, rwy: $('rwy').value, tomin: +$('tomin').value || 400, minima };
+}
+
+function times() {
+  const now = new Date();
+  const [h, m] = ($('etd').value || nowUtcTime()).split(':').map(Number);
+  let etd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h, m));
+  if (etd < now - 3 * 3600000) etd = new Date(+etd + 86400000);
+  const em = ($('eet').value || '1:30').match(/(\d+):(\d+)/);
+  const eet = em ? (+em[1] * 60 + +em[2]) * 60000 : 90 * 60000;
+  return { now, etd, eta: new Date(+etd + eet) };
+}
+
+async function getJson(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (r.status === 204) return [];
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const txt = await r.text();
+  return txt.trim() ? JSON.parse(txt) : [];
+}
+
+async function fetchLive(ids) {
+  const q = ids.join(',');
+  const [metars, tafs, airports] = await Promise.all([
+    getJson(API + 'metar?format=json&ids=' + q),
+    getJson(API + 'taf?format=json&ids=' + q),
+    getJson(API + 'airport?format=json&ids=' + q).catch(() => [])
+  ]);
+  const data = {};
+  for (const id of ids) {
+    const mt = (metars || []).filter(x => x.icaoId === id).sort((a, b) => (b.obsTime || 0) - (a.obsTime || 0))[0];
+    const tf = (tafs || []).filter(x => x.icaoId === id).sort((a, b) => String(b.issueTime).localeCompare(String(a.issueTime)))[0];
+    const ap = (airports || []).find(x => x.icaoId === id);
+    data[id] = { metarRaw: mt?.rawOb || null, tafRaw: tf?.rawTAF || null, name: ap?.name || mt?.name || '', runways: ap?.runways || [] };
+  }
+  return data;
+}
+
+function parseManual(text, ids) {
+  const data = {};
+  for (const id of ids) data[id] = { metarRaw: null, tafRaw: null, name: '', runways: (lastData?.[id]?.runways) || [] };
+  const flat = text.replace(/\s+/g, ' ').trim();
+  const blocks = flat.split(/(?=\b(?:METAR|SPECI|TAF)\b)|=\s*/).map(s => s.trim()).filter(Boolean);
+  for (let b of blocks) {
+    const isTaf = /^TAF\b/.test(b) || /^[A-Z]{4} \d{6}Z \d{4}\/\d{4}/.test(b);
+    const m = b.match(/\b([A-Z]{4}) \d{6}Z/);
+    if (!m || !data[m[1]]) continue;
+    if (isTaf) data[m[1]].tafRaw = b; else data[m[1]].metarRaw = b;
+  }
+  return data;
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+const LABEL = { ok: 'Go', warn: 'Prüfen', fail: 'No Go' };
+
+function render(data, source) {
+  const cfg = config();
+  const { now, etd, eta } = times();
+  const win = { dep: [new Date(+etd - 3600000), new Date(+etd + 3600000)], dest: [new Date(+eta - 3600000), new Date(+eta + 3600000)] };
+  win.altn = win.dest;
+  const out = [];
+  const res = {};
+  for (const [r, rl] of ROLES) {
+    const id = $(r).value.trim().toUpperCase();
+    if (!id) continue;
+    const d = data[id] || {};
+    $(r + '-name').textContent = d.name || '';
+    let metar = null, taf = null;
+    try { if (d.metarRaw) metar = PF.parseMetar(d.metarRaw); } catch (e) {}
+    try { if (d.tafRaw) taf = PF.parseTaf(d.tafRaw, now); } catch (e) {}
+    const ev = PF.evaluate(r, metar, taf, cfg, d.runways, win[r][0], win[r][1], now);
+    res[r] = ev;
+    const age = metar?.time ? Math.round((now - metar.time) / 60000) : null;
+    const stale = age != null && age > 90;
+    out.push(`<article class="card ${ev.worst}">
+      <div class="hd"><span class="role">${rl}</span><span class="icao">${esc(id)}</span><span class="pill ${ev.worst}">${LABEL[ev.worst]}</span></div>
+      <div class="meta">Zeitfenster ${PF.fmt(win[r][0])}–${PF.fmt(win[r][1])}${r === 'dep' ? ' (ETD ±1 h)' : ' (ETA ±1 h)'}${age != null ? ' · METAR vor ' + age + ' min' : ''}</div>
+      <div class="raw${stale ? ' stale' : ''}"><b>METAR</b>${esc(d.metarRaw || 'nicht verfügbar')}</div>
+      <div class="raw"><b>TAF</b>${esc(d.tafRaw || 'nicht verfügbar')}</div>
+      <ul class="checks">${[...ev.list, ...ev.notes].map(c => `<li><span class="dot ${c.sev}"></span><div class="ck">
+        <div class="t">${esc(c.t)}${c.sev === 'warn' && c.failNote ? ' · ' + esc(c.failNote) : ''}</div>
+        ${c.v ? `<div class="v">${esc(c.v)}${c.lim ? ' · Limite ' + esc(c.lim) : ''}</div>` : ''}
+        ${c.ref || c.src ? `<div class="s">${esc(c.ref || '')}${c.src && c.sev !== 'ok' ? ' · massgebend: ' + esc(c.src) : ''}</div>` : ''}
+      </div></li>`).join('')}</ul>
+    </article>`);
+  }
+  $('results').innerHTML = out.join('');
+  const sevs = Object.values(res).map(e => e.worst);
+  if (!sevs.length) { $('summary').hidden = true; return; }
+  const worst = sevs.includes('fail') ? 'fail' : sevs.includes('warn') ? 'warn' : 'ok';
+  const toalt = res.dep?.list.find(c => c.id === 'toalt' && c.sev === 'warn');
+  const txt = worst === 'ok' ? 'Alle geprüften Kriterien aus OM-A 8.1 sind erfüllt.'
+    : worst === 'warn' ? 'Erfüllt, aber mit Hinweisen (TEMPO/PROB, Gewitter oder fehlende Daten). Details unten.'
+    : 'Mindestens ein Kriterium ist nicht erfüllt. Details unten.';
+  $('summary').hidden = false;
+  $('summary').className = 'summary';
+  $('summary').innerHTML = `<span class="pill ${worst} big">${LABEL[worst]}</span><span class="txt">${txt}${toalt ? ' Take-off Alternate erforderlich.' : ''} ETD ${PF.fmt(etd)} · ETA ${PF.fmt(eta)} · ${cfg.ac} · ${cfg.rwy === 'wet' ? 'Wet' : 'Dry'}</span>`;
+  $('stamp').textContent = (source === 'manual' ? 'Eingefügte Daten' : 'Live von aviationweather.gov') + ' · Stand ' + PF.fmt(now) + (source === 'manual' ? '' : ' · nächste Aktualisierung in 5 min');
+}
+
+async function run() {
+  const ids = ROLES.map(([r]) => $(r).value.trim().toUpperCase()).filter(Boolean);
+  for (const [r] of ROLES) store(r, $(r).value.trim().toUpperCase());
+  $('error').hidden = true;
+  if (!ids.length) return;
+  const bad = ids.filter(i => !/^[A-Z0-9]{4}$/.test(i));
+  if (bad.length) { $('error').textContent = 'Bitte 4-stellige ICAO-Codes eingeben (z.B. LSZH). Ungültig: ' + bad.join(', '); $('error').hidden = false; return; }
+  $('stamp').textContent = 'Lade aktuelle METAR/TAF …';
+  try {
+    lastData = await fetchLive([...new Set(ids)]);
+    $('manual').hidden = true;
+    const missing = ids.filter(i => !lastData[i].metarRaw && !lastData[i].tafRaw);
+    if (missing.length) { $('error').textContent = 'Keine Wetterdaten für ' + missing.join(', ') + '. Code prüfen; nicht jeder Flugplatz hat METAR/TAF.'; $('error').hidden = false; }
+    render(lastData, 'live');
+    clearTimeout(timer);
+    timer = setTimeout(() => { if (document.visibilityState === 'visible') run(); else timer = null; }, 5 * 60000);
+  } catch (e) {
+    $('error').textContent = 'Die Live-Daten von aviationweather.gov konnten nicht geladen werden (' + e.message + '). Du kannst METAR und TAF unten einfügen.';
+    $('error').hidden = false;
+    $('manual').hidden = false;
+    $('stamp').textContent = 'Live-Daten nicht erreichbar';
+  }
+}
+
+$('f').addEventListener('submit', e => { e.preventDefault(); run(); });
+$('manual-go').addEventListener('click', () => {
+  const ids = ROLES.map(([r]) => $(r).value.trim().toUpperCase()).filter(Boolean);
+  lastData = parseManual($('manual-text').value, ids);
+  render(lastData, 'manual');
+});
+for (const [r] of ROLES) {
+  const el = $(r);
+  el.value = load(r) || '';
+  el.addEventListener('input', () => { el.value = el.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+}
+for (const id of ['ac', 'rwy', 'tomin', 'eet', 'dep-type', 'dep-dh', 'dep-rvr', 'dest-type', 'dest-dh', 'dest-rvr', 'altn-type', 'altn-dh', 'altn-rvr']) {
+  const el = $(id); const v = load(id); if (v != null) el.value = v;
+  el.addEventListener('change', () => { store(id, el.value); if (lastData) render(lastData, $('manual').hidden ? 'live' : 'manual'); });
+}
+$('etd').value = nowUtcTime();
+$('etd').addEventListener('change', () => { if (lastData) render(lastData, $('manual').hidden ? 'live' : 'manual'); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !timer && lastData && $('manual').hidden) run(); });
+setInterval(() => { const d = new Date(); $('clock').textContent = d.toISOString().slice(11, 16) + ' UTC'; }, 1000);
+$('clock').textContent = new Date().toISOString().slice(11, 16) + ' UTC';
+if (!$('dep').value && !$('dest').value) { $('dep').value = 'LSZH'; $('dest').value = 'LSGG'; $('altn').value = 'LFSB'; }
+run();
+</script>
+</body>
+</html>
