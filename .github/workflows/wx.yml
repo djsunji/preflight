@@ -1,8 +1,13 @@
 name: Wetterdaten
 
+# GitHub startet geplante Läufe oft nur alle paar Stunden statt alle 5 Minuten.
+# Deshalb holt ein Lauf das Wetter selbst in einer Schleife alle 5 Minuten ab
+# (knapp 6 Stunden lang) und startet zum Schluss den nächsten Lauf.
+# Der stündliche Cron ist nur das Sicherheitsnetz, falls die Kette abreisst.
+
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
   push:
     branches: [main]
@@ -10,15 +15,16 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: wx
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - id: day
@@ -27,13 +33,34 @@ jobs:
         with:
           path: cache
           key: ourairports-${{ steps.day.outputs.d }}
-      - run: python3 tools/build_wx.py out cache
-      - name: Auf Branch data veröffentlichen
+      - name: Alle 5 Minuten abholen und auf Branch data veröffentlichen
+        env:
+          REPO_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
-          cd out
-          git init -q -b data
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add wx.json
-          git commit -qm "Wetterdaten $(date -u +%H%MZ)"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+          end=$(( $(date +%s) + 340*60 ))
+          ok=0
+          while [ "$(date +%s)" -lt "$end" ]; do
+            start=$(date +%s)
+            if python3 tools/build_wx.py out cache; then
+              (
+                cd out
+                rm -rf .git
+                git init -q -b data
+                git config user.name "github-actions[bot]"
+                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                git add wx.json
+                git commit -qm "Wetterdaten $(date -u +%H%MZ)"
+                git push -qf "$REPO_URL" data
+              ) && ok=$((ok+1)) && echo "$(date -u +%H:%MZ) veröffentlicht"
+            else
+              echo "::warning::Abholung um $(date -u +%H:%MZ) fehlgeschlagen"
+            fi
+            wait=$(( 300 - ($(date +%s) - start) ))
+            [ "$wait" -gt 0 ] && sleep "$wait"
+          done
+          [ "$ok" -gt 0 ]
+      - name: Nächsten Lauf starten
+        if: always() && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run wx.yml --ref main -R ${{ github.repository }}
