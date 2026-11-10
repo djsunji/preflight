@@ -914,7 +914,7 @@ $('tb-notam').addEventListener('click', () => showTab('notam'));
 /* ===== Dienstplan aus Kalender-Feed (ICS) ===== */
 // Der Crew-Feed erlaubt meist keinen direkten Abruf aus dem Browser (CORS).
 // Läuft die Seite auf easyplay.ch, holt der Server den Feed unter ./feed?url=… ab.
-const FEED_PROXY = 'feed?url=';
+const FEED_PROXY = '/preflight/feed?url=';
 let flights = [];
 
 function icsEvents(txt) {
