@@ -59,6 +59,20 @@ button{font:600 14px/1 var(--f-body);cursor:pointer;border-radius:0}
 .ghost{background:transparent;color:var(--ink);border:1px solid var(--line2);padding:12px 16px}
 .stamp{font:500 12px/1.4 var(--f-mono);color:var(--soft)}
 
+details.roster{margin-bottom:14px}
+.rbar{display:flex;gap:8px;flex-wrap:wrap;padding:4px 14px 10px}
+.rbar input{flex:1 1 260px;min-width:0;font:500 13px/1.2 var(--f-mono);padding:10px 8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0}
+.rbar label.ghost{display:inline-flex;align-items:center;font:600 14px/1 var(--f-body);cursor:pointer}
+.flights{padding:0 14px 14px;display:grid;gap:2px}
+.fday{font:600 11px/1 var(--f-cond);letter-spacing:.1em;text-transform:uppercase;color:var(--soft);padding:12px 0 6px}
+.flt{display:grid;grid-template-columns:7ch minmax(0,1fr) auto;gap:4px 14px;align-items:baseline;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font:500 14px/1.3 var(--f-mono)}
+.flt:hover{border-color:var(--line2)}
+.flt.on{border-color:var(--red);background:var(--red-t)}
+.flt b{font-weight:600}
+.flt .ft{color:var(--soft);font-size:12.5px}
+.flt .fx{grid-column:1/-1;font:400 12px/1.3 var(--f-body);color:var(--soft)}
+@media (max-width:560px){.flt{grid-template-columns:minmax(0,1fr) auto}.flt .fr{grid-column:1/-1;order:3}.flt .fx{order:4}}
+
 details.opts{background:var(--surface);border:1px solid var(--line)}
 details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-cond);letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
 .optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px;padding:4px 14px 14px}
@@ -150,6 +164,17 @@ footer a{color:inherit}
   <h1>Preflight <span>Wx</span></h1>
   <div class="sub" id="clock">UTC</div>
 </header>
+
+<details class="opts roster" id="roster">
+  <summary>Dienstplan: Flüge aus Kalender-Feed</summary>
+  <div class="rbar">
+    <input id="feed-url" type="url" inputmode="url" spellcheck="false" placeholder="Kalender-Link, z.B. https://ops.helvetic.com/Crew/User/CalendarFeed.aspx?id=…" aria-label="Kalender-Link">
+    <button class="ghost" type="button" id="feed-load">Laden</button>
+    <label class="ghost" for="feed-file">.ics-Datei öffnen</label><input type="file" id="feed-file" accept=".ics,text/calendar" hidden>
+  </div>
+  <p class="hint" id="feed-msg">Link oder .ics-Datei aus dem Crew-Portal. Beides bleibt nur auf diesem Gerät gespeichert. Flug antippen füllt DEP, DEST, Startzeit und Flugdauer.</p>
+  <div class="flights" id="flights"></div>
+</details>
 
 <form id="f" autocomplete="off">
   <div class="fields">
@@ -515,7 +540,7 @@ const PF = (() => {
 const ROLES = [['dep', 'Departure'], ['dest', 'Destination'], ['altn', 'Alternate'], ['altn2', 'Alternate 2']];
 const DATA = 'https://raw.githubusercontent.com/djsunji/preflight/data/wx.json';
 const $ = id => document.getElementById(id);
-let lastData = null, timer = null;
+let lastData = null, timer = null, chosen = null;
 
 function store(k, v) { try { localStorage.setItem('pfwx.' + k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem('pfwx.' + k); } catch (e) { return null; } }
@@ -527,6 +552,7 @@ function fillTimes() {
   etd.add(new Option('Jetzt · ' + PF.fmt(now), 'now'));
   const h = new Date(now); h.setUTCMinutes(0, 0, 0);
   for (let i = 1; i <= 24; i++) { const t = new Date(+h + i * 3600000); etd.add(new Option(PF.fmt(t), +t)); }
+  if (chosen) etd.add(new Option('Flug ' + chosen.no + ' · ' + PF.fmt(chosen.dep) + ' · ' + chosen.dep.toISOString().slice(8, 10) + '.' + chosen.dep.toISOString().slice(5, 7) + '.', +chosen.dep), 1);
   etd.value = [...etd.options].some(o => o.value === cur) ? cur : 'now';
 }
 
@@ -703,6 +729,7 @@ function render(data, source) {
 async function run() {
   const ids = ROLES.map(([r]) => $(r).value.trim().toUpperCase()).filter(Boolean);
   for (const [r] of ROLES) store(r, $(r).value.trim().toUpperCase());
+  if ($('dest').value) store('altnfor.' + $('dest').value.trim().toUpperCase(), [$('altn').value, $('altn2').value].join(' ').trim().toUpperCase());
   $('error').hidden = true;
   if (!ids.length) return;
   const bad = ids.filter(i => !/^[A-Z0-9]{3,4}$/.test(i));
@@ -883,6 +910,137 @@ function showTab(t) {
 }
 $('tb-wx').addEventListener('click', () => showTab('wx'));
 $('tb-notam').addEventListener('click', () => showTab('notam'));
+
+/* ===== Dienstplan aus Kalender-Feed (ICS) ===== */
+// Der Crew-Feed erlaubt meist keinen direkten Abruf aus dem Browser (CORS).
+// Läuft die Seite auf easyplay.ch, holt der Server den Feed unter ./feed?url=… ab.
+const FEED_PROXY = 'feed?url=';
+let flights = [];
+
+function icsEvents(txt) {
+  const lines = txt.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+  const out = []; let ev = null;
+  for (const l of lines) {
+    if (l === 'BEGIN:VEVENT') ev = {};
+    else if (l === 'END:VEVENT') { if (ev) out.push(ev); ev = null; }
+    else if (ev) {
+      const i = l.indexOf(':'); if (i < 0) continue;
+      ev[l.slice(0, i).split(';')[0]] = l.slice(i + 1).replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1');
+    }
+  }
+  return out;
+}
+function icsDate(s) {
+  const m = /^(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d))?/.exec(s || '');
+  return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0))) : null;
+}
+// «2L700 LSZB(BRN)-DTTJ(DJE), HBAZH» (Helvetic/CblWinOps) oder «LX1234 ZRH-GVA»
+const FLT_ICAO = /^([A-Z0-9]{2,3}\d{1,4}[A-Z]?)\s+([A-Z]{4})\(([A-Z]{3})\)\s*-\s*([A-Z]{4})\(([A-Z]{3})\)(?:,\s*([A-Z0-9-]+))?/;
+const FLT_PLAIN = /^([A-Z0-9]{2,3}\d{1,4}[A-Z]?)\s+([A-Z]{3,4})\s*-\s*([A-Z]{3,4})\b/;
+function parseRoster(txt) {
+  const out = [];
+  for (const ev of icsEvents(txt)) {
+    const sum = (ev.SUMMARY || '').trim(), dep = icsDate(ev.DTSTART), arr = icsDate(ev.DTEND);
+    if (!dep || !/T/.test(ev.DTSTART)) continue;
+    let m = FLT_ICAO.exec(sum), f = null;
+    if (m) f = { no: m[1], from: m[2], fromI: m[3], to: m[4], toI: m[5], reg: m[6] || '' };
+    else if ((m = FLT_PLAIN.exec(sum))) f = { no: m[1], from: m[2], fromI: '', to: m[3], toI: '', reg: '' };
+    if (!f) continue;
+    if (/^HB[A-Z]{3}$/.test(f.reg)) f.reg = 'HB-' + f.reg.slice(2);
+    out.push({ ...f, dep, arr: arr && arr > dep ? arr : null, uid: ev.UID || sum + ev.DTSTART });
+  }
+  return out.sort((a, b) => a.dep - b.dep);
+}
+
+const DOW = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const dayKey = d => d.toISOString().slice(0, 10);
+const dayLabel = d => DOW[d.getUTCDay()] + ' ' + d.toISOString().slice(8, 10) + '.' + d.toISOString().slice(5, 7) + '.' + d.toISOString().slice(0, 4);
+function renderFlights() {
+  const now = Date.now();
+  // Ab heute (UTC) die nächsten 14 Tage
+  const from = new Date(now); from.setUTCHours(0, 0, 0, 0);
+  const list = flights.filter(f => (f.arr || f.dep) >= from && f.dep - now < 14 * 864e5);
+  if (!flights.length) { $('flights').innerHTML = ''; return; }
+  if (!list.length) { $('flights').innerHTML = '<p class="hint" style="padding:0">Keine Flüge in den nächsten 14 Tagen.</p>'; return; }
+  let html = '', day = '';
+  for (const f of list) {
+    const k = dayKey(f.dep);
+    if (k !== day) { day = k; html += `<div class="fday">${dayLabel(f.dep)}${k === dayKey(new Date()) ? ' · heute' : ''}</div>`; }
+    const far = f.dep - now > 30 * 36e5, done = (f.arr || f.dep) < now;
+    const extra = done ? 'gelandet' : far ? 'TAF erst ca. 24 h vor Abflug verfügbar' : '';
+    html += `<button type="button" class="flt${chosen && chosen.uid === f.uid ? ' on' : ''}" data-uid="${esc(f.uid)}">
+      <b>${esc(f.no)}</b><span class="fr">${esc(f.from)} → ${esc(f.to)}${f.fromI ? ` <span class="ft">${esc(f.fromI)}–${esc(f.toI)}</span>` : ''}</span>
+      <span class="ft">${PF.fmt(f.dep)}–${f.arr ? PF.fmt(f.arr) : '?'}${f.reg ? ' · ' + esc(f.reg) : ''}</span>${extra ? `<span class="fx">${extra}</span>` : ''}</button>`;
+  }
+  $('flights').innerHTML = html;
+}
+$('flights').addEventListener('click', e => {
+  const b = e.target.closest('.flt'); if (!b) return;
+  const f = flights.find(x => x.uid === b.dataset.uid); if (f) pickFlight(f);
+});
+function pickFlight(f) {
+  chosen = f;
+  $('dep').value = f.from; $('dest').value = f.to;
+  const alt = (load('altnfor.' + f.to) || '').split(' ');
+  $('altn').value = alt[0] || ''; $('altn2').value = alt[1] || '';
+  fillTimes(); $('etd').value = String(+f.dep);
+  if (f.arr) {
+    const min = Math.min(360, Math.max(30, Math.round((f.arr - f.dep) / 9e5) * 15));
+    $('eet').value = String(min); store('eet', String(min));
+  }
+  renderFlights();
+  run();
+  if (!$('altn').value) { $('error').textContent = 'Flug ' + f.no + ' übernommen. Alternate bitte eintragen, dann «Wetter prüfen» (wird für ' + f.to + ' gemerkt).'; $('error').hidden = false; }
+  $('f').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function useRoster(txt, how) {
+  if (!/BEGIN:VCALENDAR/.test(txt)) throw new Error('Das ist keine Kalender-Datei (.ics).');
+  flights = parseRoster(txt);
+  store('feed.ics', txt); store('feed.when', new Date().toISOString());
+  const up = flights.filter(f => f.dep > Date.now()).length;
+  $('feed-msg').textContent = flights.length ? `${flights.length} Flüge erkannt, ${up} davon noch offen · ${how} ${dayLabel(new Date())} ${PF.fmt(new Date())}` : 'Im Kalender wurden keine Flüge erkannt.';
+  renderFlights();
+}
+async function fetchFeed(url) {
+  let err = null;
+  for (const u of [url, FEED_PROXY + encodeURIComponent(url)]) {
+    try {
+      const r = await fetch(u, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const t = await r.text();
+      if (/BEGIN:VCALENDAR/.test(t)) return t;
+      throw new Error('keine Kalenderdaten');
+    } catch (e) { err = e; }
+  }
+  throw err;
+}
+async function loadFeed() {
+  const url = $('feed-url').value.trim();
+  if (!url) return;
+  store('feed.url', url);
+  $('feed-msg').textContent = 'Lade Dienstplan …';
+  try { useRoster(await fetchFeed(url), 'geladen'); }
+  catch (e) {
+    const when = load('feed.when');
+    $('feed-msg').textContent = 'Der Kalender-Link liess sich hier nicht direkt laden (' + e.message + '). Öffne ihn im Browser und lade die .ics-Datei mit «.ics-Datei öffnen».' + (when && flights.length ? ' Angezeigt wird der Stand vom ' + dayLabel(new Date(when)) + '.' : '');
+  }
+}
+$('feed-load').addEventListener('click', loadFeed);
+$('feed-url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadFeed(); } });
+$('feed-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try { useRoster(await file.text(), 'Datei geladen'); } catch (err) { $('feed-msg').textContent = err.message; }
+  e.target.value = '';
+});
+(() => {
+  $('feed-url').value = load('feed.url') || '';
+  const cached = load('feed.ics');
+  const when = load('feed.when');
+  if (cached) { try { flights = parseRoster(cached); renderFlights(); if (flights.length && when) $('feed-msg').textContent = flights.length + ' Flüge · Stand ' + dayLabel(new Date(when)) + ' ' + PF.fmt(new Date(when)); } catch (e) {} }
+  if (flights.length || $('feed-url').value) $('roster').open = true;
+  if ($('feed-url').value) loadFeed();
+  setInterval(renderFlights, 5 * 60000);
+})();
 
 run();
 </script>
