@@ -77,12 +77,22 @@ details.roster{margin-bottom:14px}
 .wxday .hint{padding:0;flex:1 1 260px}
 .flt .wx{grid-column:1/-1;display:grid;gap:4px;margin-top:4px;font:400 12.5px/1.35 var(--f-body)}
 .flt .wx .pill{margin:0;justify-self:start}
-.flt .wl{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
-.flt .wr{font:600 12px/1.3 var(--f-mono);min-width:11ch;color:var(--soft)}
-.flt .wa{background:var(--warn-t);color:var(--warn);padding:1px 6px}
-.flt .wa i{font-style:normal;opacity:.75;font-size:11px}
-.flt .wb{background:var(--bad-t);color:var(--bad);padding:1px 6px;font-weight:600}
+.flt .wh{display:flex;gap:10px;align-items:center}
+.flt .wst{font:500 12px/1.3 var(--f-mono);color:var(--soft)}
+.flt .wap{display:grid;gap:2px;margin-top:2px}
+.flt .wr{font:600 12px/1.3 var(--f-mono);color:var(--ink)}
+.flt .wr span{font-weight:400;color:var(--soft)}
+.flt .wi{display:grid;grid-template-columns:12ch 7.5ch 1fr;gap:8px;align-items:baseline;padding:2px 6px}
+.flt .wi .wt{font:600 12px/1.35 var(--f-mono)}
+.flt .wi .wk{font:400 11.5px/1.35 var(--f-mono);opacity:.8}
+.flt .wi .wv b{font-weight:600}
+.flt .wa{background:var(--warn-t);color:var(--warn)}
+.flt .wb{background:var(--bad-t);color:var(--bad)}
 .flt .wok{color:var(--ok)}
+.checks .wt{font:600 .92em/1 var(--f-mono);margin-right:4px}
+.checks .wt em{font-style:normal;font-weight:400;opacity:.75}
+.flt .wi .wt{white-space:nowrap}
+@media (max-width:420px){.flt .wi{grid-template-columns:auto 6ch 1fr;gap:6px;padding:2px 4px}.flt .wi .wt{font-size:11.5px}.flt .wi .wk{font-size:10.5px}}
 .flt.wok-ok{border-left:4px solid var(--ok)}.flt.wok-warn{border-left:4px solid var(--warn)}.flt.wok-fail{border-left:4px solid var(--bad)}
 @media (max-width:560px){.flt .wx{order:5}}
 details.opts{background:var(--surface);border:1px solid var(--line)}
@@ -185,7 +195,7 @@ footer a{color:inherit}
     <label class="ghost" for="feed-file">.ics-Datei öffnen</label><input type="file" id="feed-file" accept=".ics,text/calendar" hidden>
   </div>
   <p class="hint" id="feed-msg">Link oder .ics-Datei aus dem Crew-Portal. Beides bleibt nur auf diesem Gerät gespeichert. Flug antippen füllt DEP, DEST, Startzeit und Flugdauer.</p>
-  <div class="wxday"><button class="go" type="button" id="wx-day">Wetter für heute prüfen</button><span class="hint" id="wx-day-msg">Prüft alle Flüge von heute und den nächsten 24 h: Go, Advisory bei Low Ceiling (unter 1000 ft), Low Vis (unter 1500 m), Gewitter, Schnee, Nebel, gefrierendem Niederschlag oder starkem Wind.</span></div>
+  <div class="wxday"><button class="go" type="button" id="wx-day">Wetter für heute prüfen</button><span class="hint" id="wx-day-msg">Prüft nur die Flüge von heute: Go, Advisory bei Low Ceiling (unter 1000 ft), Low Vis (unter 1500 m), Gewitter, Schnee, Nebel, gefrierendem Niederschlag oder starkem Wind.</span></div>
   <div class="flights" id="flights"></div>
 </details>
 
@@ -715,9 +725,9 @@ function render(data, source) {
       <div class="raw${stale ? ' stale' : ''}"><b>METAR<small>neu alle 30 oder 60 min, TREND gilt 2 h ab Beobachtung (OM-A 8.1.6.6)</small></b>${d.metarRaw ? highlight(d.metarRaw) : 'nicht verfügbar'}</div>
       <div class="raw"><b>TAF<small class="${tafValid === false ? 'exp' : ''}">${taf?.valid ? 'gültig ' + PF.fmt(taf.valid[0]) + '–' + PF.fmt(taf.valid[1]) + (tafValid === false ? ' · abgelaufen' : '') + ' · ' : ''}LSZH/LSGG 30 h, Regional 9 h, Update alle 3 h (OM-A 8.1.6.6)</small></b>${d.tafRaw ? formatTaf(d.tafRaw) : 'nicht verfügbar'}</div>
       <ul class="checks">${[...ev.list, ...ev.notes].map(c => `<li><span class="dot ${c.sev}"></span><div class="ck">
-        <div class="t">${esc(c.t)}${c.sev === 'warn' && c.failNote ? ' · ' + esc(c.failNote) : ''}</div>
+        <div class="t">${c.src && c.sev !== 'ok' ? srcTag(c.src) : ''}${esc(c.t)}${c.sev === 'warn' && c.failNote ? ' · ' + esc(c.failNote) : ''}</div>
         ${c.v ? `<div class="v">${esc(c.v)}${c.lim ? ' · Limite ' + esc(c.lim) : ''}</div>` : ''}
-        ${c.ref || c.src ? `<div class="s">${esc(c.ref || '')}${c.src && c.sev !== 'ok' ? ' · massgebend: ' + esc(c.src) : ''}</div>` : ''}
+        ${c.ref ? `<div class="s">${esc(c.ref || '')}</div>` : ''}
       </div></li>`).join('')}</ul>
     </article>`);
   }
@@ -1045,7 +1055,23 @@ async function loadFeed() {
 // plus Advisory bei Low Ceiling, Low Visibility und signifikantem Wetter (METAR, TAF, TEMPO, PROB).
 const ADV = { ceil: 1000, vis: 1500, wind: 25, gust: 30 };
 const ADV_WX = [[/TS/, 'Gewitter'], [/FZ/, 'gefrierend'], [/GR|GS/, 'Hagel'], [/SN|SG|PL/, 'Schnee'], [/FG/, 'Nebel'], [/^\+/, 'starker Niederschlag'], [/SQ|FC|DS|SS/, 'Sturm']];
-let wxCheck = {}, wxCheckAt = null;
+let wxCheck = {}, wxCheckAt = null, wxCheckDay = '';
+
+// «TEMPO 1006/1010» → { t: '0600–1000Z', k: 'TEMPO', m: Minuten für die Sortierung }
+function srcParts(src) {
+  src = String(src || '');
+  let m = /(\d{2})(\d{2})\/(\d{2})(\d{2})/.exec(src);
+  if (m) {
+    const t1 = m[4] === '24' ? '2400' : m[4] + '00';
+    return { t: m[2] + '00–' + t1 + 'Z', k: src.replace(m[0], '').trim(), m: (+m[1]) * 1440 + (+m[2]) * 60 };
+  }
+  m = /^(\S+)\s+(\d{2})(\d{2})Z/.exec(src);
+  if (m) return { t: m[2] + m[3] + 'Z', k: m[1], m: (+m[2]) * 60 + (+m[3]) };
+  m = /^FM(\d{2})(\d{2})(\d{2})/.exec(src);
+  if (m) return { t: 'ab ' + m[2] + m[3] + 'Z', k: 'FM', m: (+m[1]) * 1440 + (+m[2]) * 60 + (+m[3]) };
+  return { t: '', k: src, m: -1 };
+}
+const srcTag = src => { const p = srcParts(src); return `<span class="wt">${esc(p.t)}${p.k ? ' <em>' + esc(p.k) + '</em>' : ''}</span> `; };
 
 function advisories(sets) {
   let ceil = null, vis = null, wind = null; const wx = new Map();
@@ -1074,22 +1100,23 @@ function checkAirport(doc, code, role, ws, we, now, cfg) {
   try { if (doc.taf?.[id]) taf = PF.parseTaf(doc.taf[id], now); } catch (e) {}
   const ev = PF.evaluate(role, metar, taf, cfg, doc.rwy?.[id] || [], ws, we, now);
   const sets = [];
-  if (metar && (role === 'dep' || (now >= ws && now <= we))) sets.push({ src: 'METAR', state: metar.state });
-  for (const s of PF.statesInWindow(taf, ws, we)) sets.push({ src: s.cat === 'main' ? 'TAF' : s.src, state: s.state });
+  if (metar && (role === 'dep' || (now >= ws && now <= we))) sets.push({ src: 'METAR ' + PF.fmt(metar.time), state: metar.state });
+  for (const s of PF.statesInWindow(taf, ws, we)) sets.push({ src: s.src, state: s.state });
   const miss = !metar && !taf ? 'kein METAR/TAF' : !taf ? 'kein TAF' : '';
-  const fails = ev.list.filter(c => c.sev === 'fail').map(c => c.t);
-  return { id, worst: ev.worst, adv: advisories(sets), miss, fails };
+  const fails = ev.list.filter(c => c.sev === 'fail').map(c => ({ k: c.t, v: c.v || '', src: c.src }));
+  return { id, worst: ev.worst, adv: advisories(sets), miss, fails, ws, we };
 }
 
+// Nur Flüge mit Abflug am heutigen Tag (UTC), die noch nicht gelandet sind
 function todaysFlights() {
-  const now = Date.now(), d0 = new Date(now); d0.setUTCHours(0, 0, 0, 0);
-  return flights.filter(f => (f.arr || f.dep) > now - 30 * 60000 && (f.dep < +d0 + 864e5 || f.dep - now < 24 * 36e5));
+  const now = Date.now(), today = dayKey(new Date(now));
+  return flights.filter(f => dayKey(f.dep) === today && (f.arr || f.dep) > now);
 }
 
 async function checkToday() {
   const list = todaysFlights();
   const btn = $('wx-day');
-  if (!list.length) { $('wx-day-msg').textContent = 'Heute und in den nächsten 24 h keine Flüge mehr.'; return; }
+  if (!list.length) { wxCheck = {}; renderFlights(); $('wx-day-msg').textContent = 'Heute keine Flüge mehr.'; return; }
   btn.disabled = true; $('wx-day-msg').textContent = 'Lade aktuelle METAR/TAF …';
   try {
     const doc = await getJson(DATA + '?t=' + Math.floor(Date.now() / 60000));
@@ -1105,9 +1132,9 @@ async function checkToday() {
       let worst = ap.some(a => a.worst === 'fail') ? 'fail' : ap.some(a => a.worst === 'warn' || a.adv.length) ? 'warn' : 'ok';
       wxCheck[f.uid] = { worst, ap, alt };
     }
-    wxCheckAt = doc.generated ? new Date(doc.generated) : now;
+    wxCheckAt = doc.generated ? new Date(doc.generated) : now; wxCheckDay = dayKey(now);
     const n = Object.values(wxCheck), bad = n.filter(x => x.worst !== 'ok').length;
-    $('wx-day-msg').textContent = `${n.length} Flüge geprüft · ${bad ? bad + ' mit Advisory' : 'alles ok'} · Wetter von ${PF.fmt(wxCheckAt)}`;
+    $('wx-day-msg').textContent = `Stand ${PF.fmt(wxCheckAt)} · ${n.length} Flüge heute · ${bad ? bad + ' mit Advisory' : 'alles ok'}`;
   } catch (e) {
     $('wx-day-msg').textContent = 'Wetterdaten nicht erreichbar (' + e.message + ').';
   }
@@ -1116,15 +1143,19 @@ async function checkToday() {
 }
 
 function wxBlock(f) {
+  if (wxCheckDay !== dayKey(new Date()) || dayKey(f.dep) !== wxCheckDay) return '';
   const r = wxCheck[f.uid]; if (!r) return '';
-  const lines = r.ap.map((a, i) => {
+  const row = (cls, src, k, v) => { const p = srcParts(src); return { m: p.m, h: `<span class="wi ${cls}"><span class="wt">${esc(p.t)}</span><span class="wk">${esc(p.k)}</span><span class="wv">${esc(k)}${v ? ' <b>' + esc(v) + '</b>' : ''}</span></span>` }; };
+  const blocks = r.ap.map((a, i) => {
     const role = ['DEP', 'DEST', 'ALTN'][i];
-    const bits = [...(a.fails || []).map(t => `<b class="wb">${esc(t)}</b>`), ...a.adv.map(x => `<span class="wa">${esc(x.k)} ${esc(x.v)} <i>${esc(x.src)}</i></span>`)];
-    if (a.miss) bits.push(`<span class="wa">${esc(a.miss)}</span>`);
-    return `<span class="wl"><span class="wr">${role} ${esc(a.id)}</span>${bits.length ? bits.join('') : '<span class="wok">ok</span>'}</span>`;
+    const rows = [...(a.fails || []).map(x => row('wb', x.src, x.k, x.v)), ...a.adv.map(x => row('wa', x.src, x.k, x.v))]
+      .sort((x, y) => x.m - y.m).map(x => x.h);
+    if (a.miss) rows.push(`<span class="wi wa"><span class="wt"></span><span class="wk"></span><span class="wv">${esc(a.miss)}</span></span>`);
+    if (!rows.length) rows.push(`<span class="wi wok"><span class="wt">${a.ws ? PF.fmt(a.ws) + '–' + PF.fmt(a.we) : ''}</span><span class="wk"></span><span class="wv">ok</span></span>`);
+    return `<span class="wap"><span class="wr">${role} ${esc(a.id)}${a.ws ? ' <span>' + (i ? 'ETA' : 'ETD') + ' ±1 h</span>' : ''}</span>${rows.join('')}</span>`;
   });
-  if (!r.alt) lines.push('<span class="wl"><span class="wr">ALTN</span><span class="wa">noch keins gemerkt, Flug antippen und eintragen</span></span>');
-  return `<span class="wx"><span class="pill ${r.worst}">${r.worst === 'ok' ? 'Alles ok' : r.worst === 'warn' ? 'Advisory' : 'No Go'}</span>${lines.join('')}</span>`;
+  if (!r.alt) blocks.push('<span class="wap"><span class="wr">ALTN</span><span class="wi wa"><span class="wt"></span><span class="wk"></span><span class="wv">noch keins gemerkt, Flug antippen und eintragen</span></span></span>');
+  return `<span class="wx"><span class="wh"><span class="pill ${r.worst}">${r.worst === 'ok' ? 'Alles ok' : r.worst === 'warn' ? 'Advisory' : 'No Go'}</span><span class="wst">Stand ${PF.fmt(wxCheckAt)}</span></span>${blocks.join('')}</span>`;
 }
 $('wx-day').addEventListener('click', checkToday);
 $('feed-load').addEventListener('click', loadFeed);
