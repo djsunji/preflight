@@ -682,7 +682,7 @@ function render(data, source) {
   for (const [r, rl] of ROLES) {
     const code = $(r).value.trim().toUpperCase();
     const id = resolved[r];
-    if (!code || !id) continue;
+    if (!code || !id) { $(r + '-name').textContent = ''; continue; }
     const d = data[id] || {};
     $(r + '-name').textContent = (code !== id ? code + ' → ' + id + ' · ' : '') + (d.name || '');
     let metar = null, taf = null;
