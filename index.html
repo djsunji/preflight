@@ -59,6 +59,32 @@ button{font:600 14px/1 var(--f-body);cursor:pointer;border-radius:0}
 .ghost{background:transparent;color:var(--ink);border:1px solid var(--line2);padding:12px 16px}
 .stamp{font:500 12px/1.4 var(--f-mono);color:var(--soft)}
 
+details.roster{margin-bottom:14px}
+.rbar{display:flex;gap:8px;flex-wrap:wrap;padding:4px 14px 10px}
+.rbar input{flex:1 1 260px;min-width:0;font:500 13px/1.2 var(--f-mono);padding:10px 8px;border:1px solid var(--line2);background:var(--surface2);color:var(--ink);border-radius:0}
+.rbar label.ghost{display:inline-flex;align-items:center;font:600 14px/1 var(--f-body);cursor:pointer}
+.flights{padding:0 14px 14px;display:grid;gap:2px}
+.fday{font:600 11px/1 var(--f-cond);letter-spacing:.1em;text-transform:uppercase;color:var(--soft);padding:12px 0 6px}
+.flt{display:grid;grid-template-columns:7ch minmax(0,1fr) auto;gap:4px 14px;align-items:baseline;text-align:left;width:100%;padding:10px 12px;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font:500 14px/1.3 var(--f-mono)}
+.flt:hover{border-color:var(--line2)}
+.flt.on{border-color:var(--red);background:var(--red-t)}
+.flt b{font-weight:600}
+.flt .ft{color:var(--soft);font-size:12.5px}
+.flt .fx{grid-column:1/-1;font:400 12px/1.3 var(--f-body);color:var(--soft)}
+@media (max-width:560px){.flt{grid-template-columns:minmax(0,1fr) auto}.flt .fr{grid-column:1/-1;order:3}.flt .fx{order:4}}
+
+.wxday{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:0 14px 6px}
+.wxday .hint{padding:0;flex:1 1 260px}
+.flt .wx{grid-column:1/-1;display:grid;gap:4px;margin-top:4px;font:400 12.5px/1.35 var(--f-body)}
+.flt .wx .pill{margin:0;justify-self:start}
+.flt .wl{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+.flt .wr{font:600 12px/1.3 var(--f-mono);min-width:11ch;color:var(--soft)}
+.flt .wa{background:var(--warn-t);color:var(--warn);padding:1px 6px}
+.flt .wa i{font-style:normal;opacity:.75;font-size:11px}
+.flt .wb{background:var(--bad-t);color:var(--bad);padding:1px 6px;font-weight:600}
+.flt .wok{color:var(--ok)}
+.flt.wok-ok{border-left:4px solid var(--ok)}.flt.wok-warn{border-left:4px solid var(--warn)}.flt.wok-fail{border-left:4px solid var(--bad)}
+@media (max-width:560px){.flt .wx{order:5}}
 details.opts{background:var(--surface);border:1px solid var(--line)}
 details.opts summary{cursor:pointer;padding:10px 14px;font:600 13px/1.2 var(--f-cond);letter-spacing:.06em;text-transform:uppercase;color:var(--soft)}
 .optgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px 16px;padding:4px 14px 14px}
@@ -150,6 +176,18 @@ footer a{color:inherit}
   <h1>Preflight <span>Wx</span></h1>
   <div class="sub" id="clock">UTC</div>
 </header>
+
+<details class="opts roster" id="roster">
+  <summary>Dienstplan: Flüge aus Kalender-Feed</summary>
+  <div class="rbar">
+    <input id="feed-url" type="url" inputmode="url" spellcheck="false" placeholder="Kalender-Link, z.B. https://ops.helvetic.com/Crew/User/CalendarFeed.aspx?id=…" aria-label="Kalender-Link">
+    <button class="ghost" type="button" id="feed-load">Laden</button>
+    <label class="ghost" for="feed-file">.ics-Datei öffnen</label><input type="file" id="feed-file" accept=".ics,text/calendar" hidden>
+  </div>
+  <p class="hint" id="feed-msg">Link oder .ics-Datei aus dem Crew-Portal. Beides bleibt nur auf diesem Gerät gespeichert. Flug antippen füllt DEP, DEST, Startzeit und Flugdauer.</p>
+  <div class="wxday"><button class="go" type="button" id="wx-day">Wetter für heute prüfen</button><span class="hint" id="wx-day-msg">Prüft alle Flüge von heute und den nächsten 24 h: Go, Advisory bei Low Ceiling (unter 1000 ft), Low Vis (unter 1500 m), Gewitter, Schnee, Nebel, gefrierendem Niederschlag oder starkem Wind.</span></div>
+  <div class="flights" id="flights"></div>
+</details>
 
 <form id="f" autocomplete="off">
   <div class="fields">
@@ -515,7 +553,7 @@ const PF = (() => {
 const ROLES = [['dep', 'Departure'], ['dest', 'Destination'], ['altn', 'Alternate'], ['altn2', 'Alternate 2']];
 const DATA = 'https://raw.githubusercontent.com/djsunji/preflight/data/wx.json';
 const $ = id => document.getElementById(id);
-let lastData = null, timer = null;
+let lastData = null, timer = null, chosen = null;
 
 function store(k, v) { try { localStorage.setItem('pfwx.' + k, v); } catch (e) {} }
 function load(k) { try { return localStorage.getItem('pfwx.' + k); } catch (e) { return null; } }
@@ -527,6 +565,7 @@ function fillTimes() {
   etd.add(new Option('Jetzt · ' + PF.fmt(now), 'now'));
   const h = new Date(now); h.setUTCMinutes(0, 0, 0);
   for (let i = 1; i <= 24; i++) { const t = new Date(+h + i * 3600000); etd.add(new Option(PF.fmt(t), +t)); }
+  if (chosen) etd.add(new Option('Flug ' + chosen.no + ' · ' + PF.fmt(chosen.dep) + ' · ' + chosen.dep.toISOString().slice(8, 10) + '.' + chosen.dep.toISOString().slice(5, 7) + '.', +chosen.dep), 1);
   etd.value = [...etd.options].some(o => o.value === cur) ? cur : 'now';
 }
 
@@ -656,7 +695,7 @@ function render(data, source) {
   for (const [r, rl] of ROLES) {
     const code = $(r).value.trim().toUpperCase();
     const id = resolved[r];
-    if (!code || !id) continue;
+    if (!code || !id) { $(r + '-name').textContent = ''; continue; }
     const d = data[id] || {};
     $(r + '-name').textContent = (code !== id ? code + ' → ' + id + ' · ' : '') + (d.name || '');
     let metar = null, taf = null;
@@ -703,6 +742,7 @@ function render(data, source) {
 async function run() {
   const ids = ROLES.map(([r]) => $(r).value.trim().toUpperCase()).filter(Boolean);
   for (const [r] of ROLES) store(r, $(r).value.trim().toUpperCase());
+  if ($('dest').value) store('altnfor.' + $('dest').value.trim().toUpperCase(), [$('altn').value, $('altn2').value].join(' ').trim().toUpperCase());
   $('error').hidden = true;
   if (!ids.length) return;
   const bad = ids.filter(i => !/^[A-Z0-9]{3,4}$/.test(i));
@@ -883,6 +923,227 @@ function showTab(t) {
 }
 $('tb-wx').addEventListener('click', () => showTab('wx'));
 $('tb-notam').addEventListener('click', () => showTab('notam'));
+
+/* ===== Dienstplan aus Kalender-Feed (ICS) ===== */
+// Der Crew-Feed erlaubt meist keinen direkten Abruf aus dem Browser (CORS).
+// Läuft die Seite auf easyplay.ch, holt der Server den Feed unter ./feed?url=… ab.
+const FEED_PROXY = '/preflight/feed?url=';
+let flights = [];
+
+function icsEvents(txt) {
+  const lines = txt.replace(/\r?\n[ \t]/g, '').split(/\r?\n/);
+  const out = []; let ev = null;
+  for (const l of lines) {
+    if (l === 'BEGIN:VEVENT') ev = {};
+    else if (l === 'END:VEVENT') { if (ev) out.push(ev); ev = null; }
+    else if (ev) {
+      const i = l.indexOf(':'); if (i < 0) continue;
+      ev[l.slice(0, i).split(';')[0]] = l.slice(i + 1).replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1');
+    }
+  }
+  return out;
+}
+function icsDate(s) {
+  const m = /^(\d{4})(\d\d)(\d\d)(?:T(\d\d)(\d\d))?/.exec(s || '');
+  return m ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0))) : null;
+}
+// «2L700 LSZB(BRN)-DTTJ(DJE), HBAZH» (Helvetic/CblWinOps) oder «LX1234 ZRH-GVA»
+const FLT_ICAO = /^([A-Z0-9]{2,3}\d{1,4}[A-Z]?)\s+([A-Z]{4})\(([A-Z]{3})\)\s*-\s*([A-Z]{4})\(([A-Z]{3})\)(?:,\s*([A-Z0-9-]+))?/;
+const FLT_PLAIN = /^([A-Z0-9]{2,3}\d{1,4}[A-Z]?)\s+([A-Z]{3,4})\s*-\s*([A-Z]{3,4})\b/;
+function parseRoster(txt) {
+  const out = [];
+  for (const ev of icsEvents(txt)) {
+    const sum = (ev.SUMMARY || '').trim(), dep = icsDate(ev.DTSTART), arr = icsDate(ev.DTEND);
+    if (!dep || !/T/.test(ev.DTSTART)) continue;
+    let m = FLT_ICAO.exec(sum), f = null;
+    if (m) f = { no: m[1], from: m[2], fromI: m[3], to: m[4], toI: m[5], reg: m[6] || '' };
+    else if ((m = FLT_PLAIN.exec(sum))) f = { no: m[1], from: m[2], fromI: '', to: m[3], toI: '', reg: '' };
+    if (!f) continue;
+    if (/^HB[A-Z]{3}$/.test(f.reg)) f.reg = 'HB-' + f.reg.slice(2);
+    out.push({ ...f, dep, arr: arr && arr > dep ? arr : null, uid: ev.UID || sum + ev.DTSTART });
+  }
+  return out.sort((a, b) => a.dep - b.dep);
+}
+
+const DOW = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+const dayKey = d => d.toISOString().slice(0, 10);
+const dayLabel = d => DOW[d.getUTCDay()] + ' ' + d.toISOString().slice(8, 10) + '.' + d.toISOString().slice(5, 7) + '.' + d.toISOString().slice(0, 4);
+function renderFlights() {
+  const now = Date.now();
+  // Ab heute (UTC) die nächsten 14 Tage
+  const from = new Date(now); from.setUTCHours(0, 0, 0, 0);
+  const list = flights.filter(f => (f.arr || f.dep) >= from && f.dep - now < 14 * 864e5);
+  if (!flights.length) { $('flights').innerHTML = ''; return; }
+  if (!list.length) { $('flights').innerHTML = '<p class="hint" style="padding:0">Keine Flüge in den nächsten 14 Tagen.</p>'; return; }
+  let html = '', day = '';
+  for (const f of list) {
+    const k = dayKey(f.dep);
+    if (k !== day) { day = k; html += `<div class="fday">${dayLabel(f.dep)}${k === dayKey(new Date()) ? ' · heute' : ''}</div>`; }
+    const far = f.dep - now > 30 * 36e5, done = (f.arr || f.dep) < now;
+    const extra = done ? 'gelandet' : far ? 'TAF erst ca. 24 h vor Abflug verfügbar' : '';
+    const wr = wxCheck[f.uid];
+    html += `<button type="button" class="flt${chosen && chosen.uid === f.uid ? ' on' : ''}${wr ? ' wok-' + wr.worst : ''}" data-uid="${esc(f.uid)}">
+      <b>${esc(f.no)}</b><span class="fr">${esc(f.from)} → ${esc(f.to)}${f.fromI ? ` <span class="ft">${esc(f.fromI)}–${esc(f.toI)}</span>` : ''}</span>
+      <span class="ft">${PF.fmt(f.dep)}–${f.arr ? PF.fmt(f.arr) : '?'}${f.reg ? ' · ' + esc(f.reg) : ''}</span>${extra && !wr ? `<span class="fx">${extra}</span>` : ''}${wxBlock(f)}</button>`;
+  }
+  $('flights').innerHTML = html;
+}
+$('flights').addEventListener('click', e => {
+  const b = e.target.closest('.flt'); if (!b) return;
+  const f = flights.find(x => x.uid === b.dataset.uid); if (f) pickFlight(f);
+});
+function pickFlight(f) {
+  chosen = f;
+  $('dep').value = f.from; $('dest').value = f.to;
+  const alt = (load('altnfor.' + f.to) || '').split(' ');
+  $('altn').value = alt[0] || ''; $('altn2').value = alt[1] || '';
+  fillTimes(); $('etd').value = String(+f.dep);
+  if (f.arr) {
+    const min = Math.min(360, Math.max(30, Math.round((f.arr - f.dep) / 9e5) * 15));
+    $('eet').value = String(min); store('eet', String(min));
+  }
+  renderFlights();
+  run();
+  if (!$('altn').value) { $('error').textContent = 'Flug ' + f.no + ' übernommen. Alternate bitte eintragen, dann «Wetter prüfen» (wird für ' + f.to + ' gemerkt).'; $('error').hidden = false; }
+  $('f').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function useRoster(txt, how) {
+  if (!/BEGIN:VCALENDAR/.test(txt)) throw new Error('Das ist keine Kalender-Datei (.ics).');
+  flights = parseRoster(txt);
+  store('feed.ics', txt); store('feed.when', new Date().toISOString());
+  const up = flights.filter(f => f.dep > Date.now()).length;
+  $('feed-msg').textContent = flights.length ? `${flights.length} Flüge erkannt, ${up} davon noch offen · ${how} ${dayLabel(new Date())} ${PF.fmt(new Date())}` : 'Im Kalender wurden keine Flüge erkannt.';
+  renderFlights();
+  if (flights.length) checkToday();
+}
+async function fetchFeed(url) {
+  let err = null;
+  for (const u of [url, FEED_PROXY + encodeURIComponent(url)]) {
+    try {
+      const r = await fetch(u, { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const t = await r.text();
+      if (/BEGIN:VCALENDAR/.test(t)) return t;
+      throw new Error('keine Kalenderdaten');
+    } catch (e) { err = e; }
+  }
+  throw err;
+}
+async function loadFeed() {
+  const url = $('feed-url').value.trim();
+  if (!url) return;
+  store('feed.url', url);
+  $('feed-msg').textContent = 'Lade Dienstplan …';
+  try { useRoster(await fetchFeed(url), 'geladen'); }
+  catch (e) {
+    const when = load('feed.when');
+    $('feed-msg').textContent = 'Der Kalender-Link liess sich hier nicht direkt laden (' + e.message + '). Öffne ihn im Browser und lade die .ics-Datei mit «.ics-Datei öffnen».' + (when && flights.length ? ' Angezeigt wird der Stand vom ' + dayLabel(new Date(when)) + '.' : '');
+  }
+}
+/* ===== Wetter für die Flüge des Tages ===== */
+// Ampel pro Flug: OM-A-Prüfung wie oben (DEP ETD ±1 h, DEST und gemerktes ALTN ETA ±1 h)
+// plus Advisory bei Low Ceiling, Low Visibility und signifikantem Wetter (METAR, TAF, TEMPO, PROB).
+const ADV = { ceil: 1000, vis: 1500, wind: 25, gust: 30 };
+const ADV_WX = [[/TS/, 'Gewitter'], [/FZ/, 'gefrierend'], [/GR|GS/, 'Hagel'], [/SN|SG|PL/, 'Schnee'], [/FG/, 'Nebel'], [/^\+/, 'starker Niederschlag'], [/SQ|FC|DS|SS/, 'Sturm']];
+let wxCheck = {}, wxCheckAt = null;
+
+function advisories(sets) {
+  let ceil = null, vis = null, wind = null; const wx = new Map();
+  for (const { state: s, src } of sets) {
+    if (s.ceil != null && s.ceil < ADV.ceil && (!ceil || s.ceil < ceil.v)) ceil = { v: s.ceil, src };
+    const ve = s.rvr != null ? Math.min(s.rvr, s.vis ?? 99999) : s.vis;
+    if (ve != null && ve < ADV.vis && (!vis || ve < vis.v)) vis = { v: ve, src };
+    const w = s.wind; const g = w ? Math.max(w.spd || 0, w.gst || 0) : 0;
+    if (w && (w.spd >= ADV.wind || (w.gst || 0) >= ADV.gust) && (!wind || g > wind.g)) wind = { v: (w.vrb ? 'VRB' : String(w.dir).padStart(3, '0')) + '/' + w.spd + (w.gst ? 'G' + w.gst : '') + ' kt', g, src };
+    for (const t of s.wx || []) for (const [re, name] of ADV_WX) if (re.test(t) && !wx.has(name)) wx.set(name, { v: t, src });
+    if (s.cb && !wx.has('Gewitter')) wx.set('Gewitter', { v: 'CB', src });
+  }
+  const out = [];
+  if (ceil) out.push({ k: 'Low Ceiling', v: ceil.v + ' ft', src: ceil.src });
+  if (vis) out.push({ k: 'Low Vis', v: vis.v + ' m', src: vis.src });
+  if (wind) out.push({ k: 'Wind', v: wind.v, src: wind.src });
+  for (const [name, x] of wx) out.push({ k: name.charAt(0).toUpperCase() + name.slice(1), v: x.v, src: x.src });
+  return out;
+}
+
+function checkAirport(doc, code, role, ws, we, now, cfg) {
+  const id = code.length === 3 ? (doc.iata?.[code] || null) : code;
+  if (!id) return { id: code, worst: 'warn', adv: [], miss: 'unbekannt' };
+  let metar = null, taf = null;
+  try { if (doc.metar?.[id]) metar = PF.parseMetar(doc.metar[id]); } catch (e) {}
+  try { if (doc.taf?.[id]) taf = PF.parseTaf(doc.taf[id], now); } catch (e) {}
+  const ev = PF.evaluate(role, metar, taf, cfg, doc.rwy?.[id] || [], ws, we, now);
+  const sets = [];
+  if (metar && (role === 'dep' || (now >= ws && now <= we))) sets.push({ src: 'METAR', state: metar.state });
+  for (const s of PF.statesInWindow(taf, ws, we)) sets.push({ src: s.cat === 'main' ? 'TAF' : s.src, state: s.state });
+  const miss = !metar && !taf ? 'kein METAR/TAF' : !taf ? 'kein TAF' : '';
+  const fails = ev.list.filter(c => c.sev === 'fail').map(c => c.t);
+  return { id, worst: ev.worst, adv: advisories(sets), miss, fails };
+}
+
+function todaysFlights() {
+  const now = Date.now(), d0 = new Date(now); d0.setUTCHours(0, 0, 0, 0);
+  return flights.filter(f => (f.arr || f.dep) > now - 30 * 60000 && (f.dep < +d0 + 864e5 || f.dep - now < 24 * 36e5));
+}
+
+async function checkToday() {
+  const list = todaysFlights();
+  const btn = $('wx-day');
+  if (!list.length) { $('wx-day-msg').textContent = 'Heute und in den nächsten 24 h keine Flüge mehr.'; return; }
+  btn.disabled = true; $('wx-day-msg').textContent = 'Lade aktuelle METAR/TAF …';
+  try {
+    const doc = await getJson(DATA + '?t=' + Math.floor(Date.now() / 60000));
+    const now = new Date(), cfg = config();
+    wxCheck = {};
+    for (const f of list) {
+      const eta = f.arr || new Date(+f.dep + 90 * 60000);
+      const h = 36e5;
+      const ap = [checkAirport(doc, f.from, 'dep', new Date(+f.dep - h), new Date(+f.dep + h), now, cfg),
+                  checkAirport(doc, f.to, 'dest', new Date(+eta - h), new Date(+eta + h), now, cfg)];
+      const alt = (load('altnfor.' + f.to) || '').split(' ').filter(Boolean)[0];
+      if (alt) ap.push(checkAirport(doc, alt, 'altn', new Date(+eta - h), new Date(+eta + h), now, cfg));
+      let worst = ap.some(a => a.worst === 'fail') ? 'fail' : ap.some(a => a.worst === 'warn' || a.adv.length) ? 'warn' : 'ok';
+      wxCheck[f.uid] = { worst, ap, alt };
+    }
+    wxCheckAt = doc.generated ? new Date(doc.generated) : now;
+    const n = Object.values(wxCheck), bad = n.filter(x => x.worst !== 'ok').length;
+    $('wx-day-msg').textContent = `${n.length} Flüge geprüft · ${bad ? bad + ' mit Advisory' : 'alles ok'} · Wetter von ${PF.fmt(wxCheckAt)}`;
+  } catch (e) {
+    $('wx-day-msg').textContent = 'Wetterdaten nicht erreichbar (' + e.message + ').';
+  }
+  btn.disabled = false;
+  renderFlights();
+}
+
+function wxBlock(f) {
+  const r = wxCheck[f.uid]; if (!r) return '';
+  const lines = r.ap.map((a, i) => {
+    const role = ['DEP', 'DEST', 'ALTN'][i];
+    const bits = [...(a.fails || []).map(t => `<b class="wb">${esc(t)}</b>`), ...a.adv.map(x => `<span class="wa">${esc(x.k)} ${esc(x.v)} <i>${esc(x.src)}</i></span>`)];
+    if (a.miss) bits.push(`<span class="wa">${esc(a.miss)}</span>`);
+    return `<span class="wl"><span class="wr">${role} ${esc(a.id)}</span>${bits.length ? bits.join('') : '<span class="wok">ok</span>'}</span>`;
+  });
+  if (!r.alt) lines.push('<span class="wl"><span class="wr">ALTN</span><span class="wa">noch keins gemerkt, Flug antippen und eintragen</span></span>');
+  return `<span class="wx"><span class="pill ${r.worst}">${r.worst === 'ok' ? 'Alles ok' : r.worst === 'warn' ? 'Advisory' : 'No Go'}</span>${lines.join('')}</span>`;
+}
+$('wx-day').addEventListener('click', checkToday);
+$('feed-load').addEventListener('click', loadFeed);
+$('feed-url').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); loadFeed(); } });
+$('feed-file').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try { useRoster(await file.text(), 'Datei geladen'); } catch (err) { $('feed-msg').textContent = err.message; }
+  e.target.value = '';
+});
+(() => {
+  $('feed-url').value = load('feed.url') || '';
+  const cached = load('feed.ics');
+  const when = load('feed.when');
+  if (cached) { try { flights = parseRoster(cached); renderFlights(); if (flights.length && when) $('feed-msg').textContent = flights.length + ' Flüge · Stand ' + dayLabel(new Date(when)) + ' ' + PF.fmt(new Date(when)); } catch (e) {} }
+  if (flights.length || $('feed-url').value) $('roster').open = true;
+  if (flights.length) checkToday();
+  if ($('feed-url').value) loadFeed();
+  setInterval(renderFlights, 5 * 60000);
+})();
 
 run();
 </script>
